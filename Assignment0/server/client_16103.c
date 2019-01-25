@@ -21,9 +21,11 @@
 
 void* receive(void *args);
 
-
 // CLIENT
 int main(void){
+	//dont buffer the output
+	setbuf(stdout, NULL);
+
 	char *serverName = malloc(sizeof(char)*COMMAND_LEN);
 
 	printf("starting client...\n");

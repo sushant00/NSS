@@ -18,10 +18,14 @@
 #define MAX_USERS 20
 #define MAX_USERNAME_LEN 50
 #define MAX_CLIENTS 10
+
 #define SERVER_PORT 12000
 #define EXIT_REQUEST "exit"
-#define COMMAND_LEN 1024
 #define MSG_LEN 2024
+
+#define MAX_PWD_LEN 512
+#define COMMAND_LEN 1024
+#define MAX_TOKENS 50		//assume max tokens = 50
 
 #define PATH_PASSWD "etc/passwd"
 #define PATH_HOME "slash/home/"
@@ -38,13 +42,13 @@ int authAndConnect(int connectionSocket);
 int initVars(void);
 
 char *readCommand();
-char **parseCommand(char * command);
-int exec_internal(char **args);
+char **parseCommand(char *command, char **tokens);
+int exec_internal(char **args, int clientInd);
 
 //supported internal commands
 int cd(char **args);
 int create_dir(char **args);
-int exitShell(char **args);
+int exitShell(int clientInd);
 int fget(char **args);
 int fput(char **args);
 int ls(char **args);
@@ -53,10 +57,6 @@ int ls(char **args);
 //shell vars
 size_t bufsize = 1024;		//assume max line length = 100 chars
 char *line;
-int MAX_TOKENS = 50;		//assume max tokens = 50
-char **tokens;
-char *pwd;
-
 
 //user database
 char userNames[MAX_USERS+1][MAX_USERNAME_LEN];
@@ -66,6 +66,8 @@ char userGroup[MAX_USERS+1][MAX_USERNAME_LEN];
 int numClients;
 int clientSockets[MAX_CLIENTS];
 int clientIDs[MAX_CLIENTS];
+char clientPWDs[MAX_CLIENTS][MAX_PWD_LEN];
+
 sem_t w_mutex;					//threads acquire lock before modifying clientSockets, numClients;
 int readCount = 0;				//read count for clients reading clientSockets
 
@@ -183,6 +185,7 @@ int main(void){
 //reads user database file - passwd, creates home directories for users
 int setupFileSystem(void){
 	FILE* userDBptr = fopen(PATH_PASSWD, "r");
+	FILE* lsPtr;
 
 	if(userDBptr==NULL){
 		fprintf(stderr, "[error] opening user database file\n");
@@ -191,7 +194,7 @@ int setupFileSystem(void){
 	printf("reading user database\n");
 
 	int numUser = 0;
-	char dirName[ strlen(PATH_HOME) + MAX_USERNAME_LEN ];
+	char dirName[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	strcpy(dirName, PATH_HOME);
 	
 	char buf[MAX_USERNAME_LEN];
@@ -203,6 +206,7 @@ int setupFileSystem(void){
 			strcpy(userGroup[numUser], buf);
 		}else{
 			fprintf(stderr, "[error] wrong user database format\n");
+			close(userDBptr);
 			return -1;
 		}
 		
@@ -212,11 +216,19 @@ int setupFileSystem(void){
 		if(mkdir(dirName, 0775) == -1){
 			if (errno != EEXIST){
 				fprintf(stderr, "[error] while creating user %s home directory, errno %d\n",userNames[numUser], errno);
+				close(userDBptr);
 				return -1;
 			}
+		}else{
+			strcpy(dirName+ strlen(PATH_HOME) + strlen(userNames[numUser]), "/ls");
+			//create a file to store ls of directory
+			lsPtr = fopen(dirName, "a");
+			close(lsPtr);
+
 		}
 		numUser++;
 	}
+	close(userDBptr);
 	return 0;
 
 }
@@ -296,9 +308,11 @@ int authAndConnect(int connectionSocket) {
 
 						clientIDs[ind] = userInd;
 						clientSockets[ind] = connectionSocket;
+						strcpy(clientPWDs[ind], PATH_HOME);
+						strcpy(clientPWDs[ind]+strlen(PATH_HOME), userNames[userInd]);
 					
 						//informing client
-						sprintf(sendmsg, "server: authenticated");
+						sprintf(sendmsg, "server: authenticated\n%s@server:%s$ ", userNames[userInd], clientPWDs[ind]);
 						sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 						if(sendlen==-1){ //error
 							printf("[error] sending to socket %d\n", connectionSocket);
@@ -323,9 +337,9 @@ int initVars(void) {
 }
 
 //handler for a client
-void* handleConnection(void *args){
+void* handleConnection(void *Args){
 	//get the arguments
-	struct Args *con_args = args;
+	struct Args *con_args = Args;
 	int connectionSocket = con_args->connectionSocket;
 	// int clientID = con_args->clientID;
 
@@ -354,6 +368,7 @@ void* handleConnection(void *args){
 
 	char **args;
 	int executed;
+	char **tokens = malloc(sizeof(char *)*MAX_TOKENS);
 
 	while(1){
 		//receive the msg
@@ -373,11 +388,13 @@ void* handleConnection(void *args){
 		}
 		else{
 			printf("received %zd bytes from client %s: %s\n", recvlen, userNames[clientIDs[clientInd]], recvmsg);
-			args = parseCommand(recvmsg);
+			args = parseCommand(recvmsg, tokens);
+			// printf("parsed the command\n");
+
 			//check and execute if internal command
-			if (exec_internal(args)==-1) {
+			if (exec_internal(args, clientInd)==-1) {
 				//informing client
-				sprintf(sendmsg, "[error] %s is not valid command\n", args[0]);
+				sprintf(sendmsg, "[error] %s is not valid command\n%s@server:%s$ ", args[0], userNames[clientIDs[clientInd]], clientPWDs[clientInd]);
 				sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 				if(sendlen==-1){ //error
 					printf("[error] sending to socket %d\n", connectionSocket);
@@ -385,14 +402,14 @@ void* handleConnection(void *args){
 			}
 			
 
-			if(strcmp(EXIT_REQUEST, recvmsg)==0){				
-				printf("client %s disconnected\n", userNames[clientIDs[clientInd]]);
-				//takeaway client's ID and close socket
-				clientIDs[clientInd] = 0;
-				close(clientSockets[clientInd]);
-				numClients--;
-				pthread_exit(NULL);
-			}
+			// if(strcmp(EXIT_REQUEST, recvmsg)==0){				
+			// 	printf("client %s disconnected\n", userNames[clientIDs[clientInd]]);
+			// 	//takeaway client's ID and close socket
+			// 	clientIDs[clientInd] = 0;
+			// 	close(clientSockets[clientInd]);
+			// 	numClients--;
+			// 	pthread_exit(NULL);
+			// }
 
 			// //create the message to be transmitted
 			// sprintf(sendmsg, "received from %d: %s", clientID, recvmsg);
@@ -464,11 +481,11 @@ char *readCommand(){
 }
 
 
-char **parseCommand(char * command){
+char **parseCommand(char * command, char **tokens){
 	int index = 0;
 	char *next = strtok(command, delim);
 
-	while(next!=NULL && index<50){
+	while(next!=NULL && index<MAX_TOKENS){
 		tokens[index++] = next;
 		next = strtok(NULL, delim);
 	}
@@ -503,7 +520,7 @@ int exec_internal(char **args, int clientInd) {
 		return 0;
 	}
 	else if(strcmp(command,"ls")==0){
-		ls(args+1);
+		ls(args+1, clientInd);
 		return 0;
 	}
 	printf("command %s not recognized\n", command);
