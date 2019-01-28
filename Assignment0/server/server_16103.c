@@ -28,6 +28,8 @@
 #define COMMAND_LEN 1024
 #define MAX_TOKENS 50		//assume max tokens = 50
 
+#define HOME_OWNER "root"
+
 #define DENTRY "/dentry.dir"
 #define PATH_PASSWD "etc/passwd"
 #define PATH_HOME "slash/home/"
@@ -42,7 +44,7 @@ int setupFileSystem(void);
 int getEmptySpot(void);
 int authAndConnect(int connectionSocket);
 int initVars(void);
-int authDir(char *dir_dentry_path, int userID);
+int authFile(char *dir_path, int userID, int mode, int isDir);
 int validatePath(char *path);
 int updatePWD(char *path, int clientInd);
 
@@ -310,7 +312,20 @@ int setupFileSystem(void){
 	int numUser = 0;
 	char dirName[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	strcpy(dirName, PATH_HOME);
-	
+
+	//create dentry for home dir
+	strcpy(dirName+ strlen(PATH_HOME) + strlen(userNames[numUser]), DENTRY);
+	//create a file to store ls of directory
+	lsPtr = fopen(dirName, "w+");
+	//user
+	fprintf(lsPtr, "%s\n", HOME_OWNER);
+	// group
+	fprintf(lsPtr, "%s\n", HOME_OWNER);
+	//remove DENTRY added to dirName
+	dirName[strlen(dirName)-strlen(DENTRY)] = 0;
+
+
+	fclose(lsPtr);
 	char buf[MAX_USERNAME_LEN];
 	while (numUser<MAX_USERS && fscanf(userDBptr, "%s", buf)==1 ) {
 		strcpy(userNames[numUser], buf);
@@ -554,8 +569,11 @@ int updatePWD(char *path, int clientInd) {
 	char absPathHome[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	realpath(PATH_HOME, absPathHome);
 	realpath(path, absPath);
+	printf("%s\n%s\n", absPathHome, absPath);
 	strcpy( clientPWDs[clientInd], PATH_HOME);
-	strcpy( clientPWDs[clientInd] + strlen(PATH_HOME), &absPath[strlen(absPathHome)+1]);
+	printf("updated pwd step1 to %s\n", clientPWDs[clientInd]);
+	strcpy( clientPWDs[clientInd] + strlen(PATH_HOME)-1, &absPath[strlen(absPathHome)]);
+	// clientPWDs[clientInd][strlen(absPath)-strlen(absPathHome)] = 0;
 
 	printf("updated pwd to %s\n", clientPWDs[clientInd]);
 
@@ -583,7 +601,7 @@ int cd(char **args, int clientInd) {
 	if(validatePath(path) == -1) {
 		printf("cd: could not validate this path\n");
 		
-		sprintf(sendmsg, "cannot access %s\n", args[0]);
+		sprintf(sendmsg, "cd: cannot access %s\n", args[0]);
 		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 		if(sendlen==-1){ //error
 			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
@@ -599,6 +617,64 @@ int cd(char **args, int clientInd) {
 }
 
 int create_dir(char **args, int clientInd) {
+	size_t sendmsglen = MSG_LEN*sizeof(char);
+	char *sendmsg = malloc(sendmsglen);
+	int sendlen;
+
+	printf("create_dir: create directory %s\n", args[0]);
+
+	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
+	if(args[0]!=NULL && args[0][0]=='/'){
+		strcpy(path, args[0]);
+	}else{
+		strcpy(path, clientPWDs[clientInd]);
+		if(args[0]!=NULL) {
+			strcpy(path + strlen(path), "/");
+			strcpy(path + strlen(path), args[0]);
+		}
+	}
+
+	//check if one level up directory exists and allows writing
+	strcpy(path + strlen(path), "/..");
+
+	if(validatePath(path) == -1) {
+		printf("create_dir: could not validate this path\n");
+		
+		sprintf(sendmsg, "create_dir: cannot access %s\n", args[0]);
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		return -1;
+	}
+	//check directory for write permission
+	if(authFile(path, clientIDs[clientInd], 2, 1) == -1){
+		printf("create_dir: could not authenticate this path %s\n", path);
+		
+		sprintf(sendmsg, "create_dir: permission denied. cannot create %s\n", args[0]);
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		return -1;
+	}
+	//remove the extra /.. added to path
+	path[strlen(path)-3] = 0;
+
+	if(mkdir(path, 0775) == -1){
+		sprintf(sendmsg, "create_dir: %s\n", strerror(errno));
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+	}
+
+	printf("create_dir: created dir %s\n", path);
+
+
 	return 0;
 }
 
@@ -613,8 +689,72 @@ int exitShell(int clientInd) {
 }
 
 int fget(char **args, int clientInd) {
-	return 0;
+	size_t sendmsglen = MSG_LEN*sizeof(char);
+	char *sendmsg = malloc(sendmsglen);
+	int sendlen;
+
+	printf("fget: read file %s\n", args[0]);
+
+	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
+	if(args[0]!=NULL && args[0][0]=='/'){
+		strcpy(path, args[0]);
+	}else{
+		strcpy(path, clientPWDs[clientInd]);
+		if(args[0]!=NULL) {
+			strcpy(path + strlen(path), "/");
+			strcpy(path + strlen(path), args[0]);
+		}
+	}
+
+	if(validatePath(path) == -1) {
+		printf("fget: could not validate this path\n");
+		
+		sprintf(sendmsg, "fget: cannot access %s\n", args[0]);
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		return -1;
+	}
+	//check if file allows reading
+	if(authFile(path, clientIDs[clientInd], 4, 0) == -1){
+		printf("fget: could not authenticate for file %s\n", args[0]);
+		
+		sprintf(sendmsg, "fget: permission denied. cannot read %s\n", args[0]);
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		return -1;
+	}
+	
+
+	//print the file content
+	FILE* filePtr = fopen(path, "r");
+	if(filePtr==NULL){
+		printf("some error opening %s\n", path);
+		fclose(filePtr);
+		return -1;
+	}
+
+	//skip first two entries as they contain username and group name
+	getline(&sendmsg, &sendmsglen, filePtr);
+	getline(&sendmsg, &sendmsglen, filePtr);
+
+	while(getline(&sendmsg, &sendmsglen, filePtr)!=-1){  //read until end of file
+		//informing client
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			fclose(filePtr);
+			return -1;
+		}	
+	}
+
 }
+
 
 int fput(char **args, int clientInd) {
 	return 0;
@@ -630,33 +770,59 @@ int validatePath(char *path) {
 	printf("abs path %s\nabs path home %s\n", absPath, absPathHome);
 	size_t lenPre = strlen(absPathHome); 
 	if ( strncmp(absPath, absPathHome, lenPre) == 0 ) {
-		return 0;
+		//check if this directory exists
+		strcpy(absPath + strlen(absPath), DENTRY);
+		FILE* filePtr = fopen(absPath, "r");
+		if(filePtr!=NULL){
+			//dentry exusts i.e. file exists
+			return 0;
+		}
+
 	}
+
+
 	printf("could not validate path %s\n", path);
 	return -1;
 }
 
 //authenticate if this directory is readable by the current user
-int authDir(char *dir_dentry_path, int userID) {
-	printf("authenticating user %s for dir %s\n", userNames[userID], dir_dentry_path);
-	FILE* dentryPtr = fopen(dir_dentry_path, "r");
+//rwx mode
+int authFile(char *path, int userID, int mode, int isDir) {
+	char file_path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
+	strcpy(file_path, path);
+	if(isDir){
+		strcpy(file_path + strlen(file_path), DENTRY);
+	}
+	printf("authenticating user %s for dir %s\n", userNames[userID], file_path);
+	FILE* dentryPtr = fopen(file_path, "r");
 	if(dentryPtr==NULL){
-		printf("some error opening %s\n", dir_dentry_path);
+		printf("some error opening %s\n", file_path);
 		fclose(dentryPtr);
 		return -1;
 	}
 
 	char username[MAX_USERNAME_LEN];
 	char usergrp[MAX_USERNAME_LEN];
+	int file_mode = 0;
 	if ( fscanf(dentryPtr, "%s", username)==1 && fscanf(dentryPtr, " %s", usergrp) ){
-		if( strcmp(username, userNames[userID])==0 || strcmp(usergrp, userGroup[userID])) {
-			printf("authenticated user %s for dir %s\n", userNames[userID], dir_dentry_path);
-			//successfully authenticated for read access
+		if( strcmp(username, userNames[userID])==0 || strcmp(usergrp, userGroup[userID]) == 0) {
+			file_mode = file_mode ^ 4;
+			printf("authFile: has read permission. File mode %d\n", file_mode);
+		}			
+		if( strcmp(username, userNames[userID])==0 ) {
+			file_mode = file_mode ^ 2;
+			printf("authFile: has write permission. File mode %d\n", file_mode);
+		}
+
+		printf("mode: %d file mode: %d bit_and: %d\n", mode, file_mode, mode&file_mode);
+		if ((mode & file_mode) > 0) {
+			printf("authenticated user %s mode %d for dir %s\n", userNames[userID], mode, file_path);
+			//successfully authenticated for mode access
 			return 0;
 		}
 	}
 
-	printf("could not authenticate user %s for dir %s\n", userNames[userID], dir_dentry_path);
+	printf("could not authenticate user %s for dir %s\n", userNames[userID], file_path);
 	return -1;
 }
 
@@ -680,13 +846,18 @@ int ls(char **args, int clientInd) {
 			strcpy(dirName + strlen(dirName), args[0]);
 		}
 	}
-	strcpy(dirName + strlen(dirName), DENTRY);
 	printf("ls: dir queried %s\n", dirName);
 
-	if( validatePath(dirName) == -1 || authDir(dirName, clientIDs[clientInd]) == -1) {
-		printf("ls: cannot validate or authenticate directory %s\n", dirName);
+	//validate and 
+	if( validatePath(dirName) == -1 ){
+		printf("ls: cannot validate directory %s\n", dirName);
+		if(args[0]!=NULL){
+			sprintf(sendmsg, "ls: cannot access %s\n", args[0]);
 
-		sprintf(sendmsg, "cannot access %s\n", args[0]);
+		}else{
+		sprintf(sendmsg, "ls: cannot access dir\n");
+
+		}
 		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 		if(sendlen==-1){ //error
 			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
@@ -694,8 +865,25 @@ int ls(char **args, int clientInd) {
 		}
 		return -1;
 	}
+	//authenticate directory for read access
+	if( authFile(dirName, clientIDs[clientInd], 4, 1) == -1) {
+		printf("ls: cannot authenticate directory %s\n", dirName);
+		if(args[0]!=NULL){
+			sprintf(sendmsg, "ls: permission denied for %s\n", args[0]);
+		}else{
+			sprintf(sendmsg, "ls: permission denied\n");
+		}
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		return -1;	
+	}
 
 	//authenticated read access
+	printf("ls: authenticated for read access\n");
+
 	DIR *d;
 	struct dirent *dir;
 	d = opendir(dirName);
@@ -705,21 +893,31 @@ int ls(char **args, int clientInd) {
 	char username[MAX_USERNAME_LEN];
 	char usergrp[MAX_USERNAME_LEN];
 
+	// char fileName[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	if (d) {
 		while (( dir = readdir(d)) != NULL ) {
 			printf("ls: file entry %s\n", dir->d_name);
-			if (strcmp(dir->d_name, DENTRY)) {
-				printf("ls: skipping %s\n", DENTRY);
+			if (strcmp(dir->d_name, &DENTRY[1])==0 || strcmp(dir->d_name, ".")==0 || strcmp(dir->d_name, "..")==0 ) {
+				printf("ls: skipping %s\n", dir->d_name);
+				continue;
 			}
-			filePtr = fopen(dir->d_name, "r");
+
+			//reuse dirName as fileName by first appending filename and later removing
+			strcpy(dirName + strlen(dirName), "/");
+			printf("ls: filename %s\n", dirName);
+			strcpy(dirName + strlen(dirName), dir->d_name);
+			printf("ls: filename %s\n", dirName);
+			filePtr = fopen(dirName, "r");
+			//remove add filename from dir name
+			dirName[strlen(dirName)-strlen(dir->d_name)] = 0;
 			if(filePtr==NULL){
 				printf("some error opening %s\n", dir->d_name);
 				return -1;
 			}
-			if ( fscanf(filePtr, "%s", username) && fscanf(filePtr, " %s", usergrp) ){
+			if ( fscanf(filePtr, "%s", username) && fscanf(filePtr, "%s", usergrp) ){
 				//print this file's entry for ls
 				printf("ls: printing directory entry\n");
-				sprintf(sendmsg, "%30s  %30s  %30s\n", dir->d_name, username, usergrp);
+				sprintf(sendmsg, "%-20s  %-20s  %-20s\n", dir->d_name, username, usergrp);
 				sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 				if(sendlen==-1){ //error
 					printf("[error] sending to socket %d\n", clientSockets[clientInd]);
@@ -732,6 +930,9 @@ int ls(char **args, int clientInd) {
 			fclose(filePtr);		
 		}
 		closedir(d);
+	} else{
+		perror("ls: could not open the directory");
+		return -1;
 	}
 
 
