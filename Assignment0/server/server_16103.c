@@ -27,6 +27,7 @@
 #define COMMAND_LEN 1024
 #define MAX_TOKENS 50		//assume max tokens = 50
 
+#define DENTRY "/dentry"
 #define PATH_PASSWD "etc/passwd"
 #define PATH_HOME "slash/home/"
 
@@ -51,7 +52,7 @@ int create_dir(char **args);
 int exitShell(int clientInd);
 int fget(char **args);
 int fput(char **args);
-int ls(char **args);
+int ls(char **args, int clientInd);
 
 
 //shell vars
@@ -80,6 +81,8 @@ struct Args {
 
 // SERVER
 int main(void){
+	//dont buffer output
+	setbuf(stdout, NULL);
 
 	initVars();
 
@@ -206,7 +209,7 @@ int setupFileSystem(void){
 			strcpy(userGroup[numUser], buf);
 		}else{
 			fprintf(stderr, "[error] wrong user database format\n");
-			close(userDBptr);
+			fclose(userDBptr);
 			return -1;
 		}
 		
@@ -216,19 +219,19 @@ int setupFileSystem(void){
 		if(mkdir(dirName, 0775) == -1){
 			if (errno != EEXIST){
 				fprintf(stderr, "[error] while creating user %s home directory, errno %d\n",userNames[numUser], errno);
-				close(userDBptr);
+				fclose(userDBptr);
 				return -1;
 			}
 		}else{
-			strcpy(dirName+ strlen(PATH_HOME) + strlen(userNames[numUser]), "/ls");
+			strcpy(dirName+ strlen(PATH_HOME) + strlen(userNames[numUser]), DENTRY);
 			//create a file to store ls of directory
-			lsPtr = fopen(dirName, "a");
-			close(lsPtr);
+			lsPtr = fopen(dirName, "a+");
+			fclose(lsPtr);
 
 		}
 		numUser++;
 	}
-	close(userDBptr);
+	fclose(userDBptr);
 	return 0;
 
 }
@@ -554,6 +557,50 @@ int fput(char **args) {
 	return 0;
 }
 
-int ls(char **args) {
+int ls(char **args, int clientInd) {
+	printf("doing ls\n");
+	
+	char dirName[ strlen(PATH_HOME) + MAX_PWD_LEN ];
+	if(args!=NULL && args[0][0]=='/'){
+		strcpy(dirName, args[0]);
+	}else{
+		strcpy(dirName, clientPWDs[clientInd]);
+		strcpy(dirName + strlen(dirName), "/");
+		strcpy(dirName + strlen(dirName), args[0]);
+	}
+	printf("there\n");
+	if(dirName[strlen(dirName)] == '/'){
+		strcpy(dirName + strlen(dirName), &DENTRY[1]);
+	}else{
+		strcpy(dirName + strlen(dirName), DENTRY);
+	}
+	printf("here\n");
+
+	FILE* lsPtr = fopen(dirName, "r");
+	if(lsPtr==NULL){
+		printf("some error opening %s\n", dirName);
+		fclose(lsPtr);
+		return -1;
+	}
+	size_t sendmsglen = MSG_LEN*sizeof(char);
+	char *sendmsg = malloc(sendmsglen);
+	int sendlen;
+	while(getline(&sendmsg, &sendmsglen, lsPtr)!=-1){  //read until end of file
+		//informing client
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			fclose(lsPtr);
+			return -1;
+		}	
+	}
+	sprintf(sendmsg, "%s@server:%s$ ", userNames[clientIDs[clientInd]], clientPWDs[clientInd]);
+	sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+	if(sendlen==-1){ //error
+		printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+		fclose(lsPtr);
+		return -1;
+	}	
+	fclose(lsPtr);					
 	return 0;
 }
