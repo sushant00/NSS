@@ -78,7 +78,7 @@ int main(void){
 		while(1){
 			fgets(command, commandlen, stdin);
 			char *newline = strchr(command, '\n');
-			command[(int)(newline - command)] = '\0';
+			// command[(int)(newline - command)] = '\0';
 			if(strlen(command) != 0){
 				break;
 			}
