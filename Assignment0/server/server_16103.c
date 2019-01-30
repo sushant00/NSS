@@ -126,7 +126,7 @@ int main(void){
 		exit(1);
 	}
 	printf("socket created %d\n", serverSocket);
-	ret = setsockopt(serverSocket, SOL_SOCKET, SO_KEEPALIVE | SO_REUSEADDR, (const void *)&enable, sizeof(enable));
+	ret = setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, (const void *)&enable, sizeof(enable));
 	if(ret==-1){	//error
 		fprintf(stderr, "could not set socket options\n");
 
@@ -220,7 +220,7 @@ void* handleConnection(void *Args){
 		printf("authentication failed. Closing connection.\n");
 
 		//informing client
-		sprintf(sendmsg, "server: authentication failed\n");
+		sprintf(sendmsg, EXIT_REQUEST);
 		sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 		if(sendlen==-1){ //error
 			printf("[error] sending to socket %d\n", connectionSocket);
@@ -281,37 +281,6 @@ void* handleConnection(void *Args){
 			if(sendlen==-1){ //error
 				printf("[error] sending to socket %d\n", connectionSocket);
 			}
-			
-
-			// if(strcmp(EXIT_REQUEST, recvmsg)==0){				
-			// 	printf("client %s disconnected\n", userNames[clientIDs[clientInd]]);
-			// 	//takeaway client's ID and close socket
-			// 	clientIDs[clientInd] = 0;
-			// 	close(clientSockets[clientInd]);
-			// 	numClients--;
-			// 	pthread_exit(NULL);
-			// }
-
-			// //create the message to be transmitted
-			// sprintf(sendmsg, "received from %d: %s", clientID, recvmsg);
-			// printf("%s\n", sendmsg);
-
-			// sendmsglen = strlen(sendmsg)+1;
-
-			// //broadcast the message
-			// for(int i = 0; i<MAX_CLIENTS; i++){
-			// 	if(clientIDs[i]!=0){
-			// 		sendlen = send(clientSockets[i], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
-			// 		if(sendlen==-1){ //error
-			// 			printf("error sending to socket %d\n", connectionSocket);
-			// 			// sem_wait(&w_mutex);		//wait for lock
-			// 			// sem_post(&w_mutex);		//release lock
-			// 		}else{
-			// 			printf("sent %zd bytes to client %d\n", sendlen, clientIDs[i]);
-
-			// 		}
-			// 	}
-			// }
 		}
 	}
 	free(sendmsg);
@@ -405,10 +374,12 @@ int userConnected(int userID) {
 	int clientInd = 0;
 	while( clientInd < MAX_CLIENTS) {
 		if( clientIDs[clientInd] == userID ){
+			printf("userConnected: user %d %s already connected\n", userID, userNames[userID]);
 			return clientInd;
 		}
 		clientInd++;
 	}
+	printf("userConnected: user %d %s not connected\n", userID, userNames[userID]);
 	return -1;
 }
 
@@ -468,10 +439,15 @@ int authAndConnect(int connectionSocket) {
 		while(userInd < MAX_USERS){
 			if(strcmp(userNames[userInd], recvmsg)==0) {
 				//check if this user is already connected
-				if( userConnected(userInd) > 0 ) {
-					printf("user %s already present", recvmsg);
+				if( userConnected(userInd) >= 0 ) {
+					printf("user %s already present", recvmsg);	
+					sprintf(sendmsg, "server: %s's another session is active. Bye!\n", userNames[userInd]);
+					sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 					free(sendmsg);
 					free(recvmsg);
+					if(sendlen==-1){ //error
+						printf("[error] sending to socket %d\n", connectionSocket);
+					}
 					return -1;
 				}else {
 					ind = getEmptySpot();
@@ -509,8 +485,13 @@ int authAndConnect(int connectionSocket) {
 			userInd++;
 		}
 	}
+	sprintf(sendmsg, "server: authentication failed.\n");
+	sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 	free(sendmsg);
 	free(recvmsg);
+	if(sendlen==-1){ //error
+		printf("[error] sending to socket %d\n", connectionSocket);
+	}
 	return -1;
 }
 
@@ -547,6 +528,8 @@ void* informExit(void *args){
 					}else{
 						printf("sent %zd bytes to client %d\n", sendlen, clientIDs[i]);
 					}
+					shutdown(clientSockets[i], SHUT_RDWR);
+					close(clientIDs[i]);
 				}
 			}
 			printf("closing server socket %d\n", serverSocket);
@@ -1202,11 +1185,14 @@ int validatePath(char *path) {
 
 
 int inGrp(char *usergrp, int userID) {
+	printf("inGrp: check %d %s in grp %s\n", userID, userNames[userID], usergrp);
 	for(int i=0; i<MAX_GROUPS_PER_USER; i++) {
 		if ( strcmp(userGroups[userID][i], usergrp)==0 ) {
+			printf("inGrp: %d %s is in grp %s\n", userID, userNames[userID], usergrp);
 			return 0;
 		}
 	}
+	printf("inGrp: %d %s not in grp %s\n", userID, userNames[userID], usergrp);
 	return -1;
 }
 
