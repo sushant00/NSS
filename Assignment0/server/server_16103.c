@@ -17,11 +17,13 @@
 #include <semaphore.h>
 
 #define MAX_USERS 20
+#define MAX_GROUPS_PER_USER 10
 #define MAX_USERNAME_LEN 50
 #define MAX_CLIENTS 10
 
 #define SERVER_PORT 12000
 #define EXIT_REQUEST "exit"
+#define FILE_END "end"
 #define MSG_LEN 2024
 
 #define MAX_PWD_LEN 512
@@ -40,15 +42,20 @@ const char *delim = " \n\r\t";//space, carriage return , newline, tab
 
 void* handleConnection(void *args);
 void* informExit(void *args);
+
 int setupFileSystem(void);
-int getEmptySpot(void);
 int authAndConnect(int connectionSocket);
 int initVars(void);
+
 int authFile(char *dir_path, int userID, int mode, int isDir);
 int validatePath(char *path);
 int updatePWD(char *path, int clientInd);
+int putContent(char *path, int clientInd);
+
 int isUser(char *username);
 int isGrp(char *grp);
+int inGrp(char *usergrp, int userID);
+int getEmptySpot(void);
 
 char *readCommand();
 char **parseCommand(char *command, char **tokens);
@@ -69,13 +76,15 @@ char *line;
 
 //user database
 char userNames[MAX_USERS+1][MAX_USERNAME_LEN];
-char userGroup[MAX_USERS+1][MAX_USERNAME_LEN];
+char userGroups[MAX_USERS+1][MAX_GROUPS_PER_USER][MAX_USERNAME_LEN];
 
 // Synchronisation vars
 int numClients;
 int clientSockets[MAX_CLIENTS];
 int clientIDs[MAX_CLIENTS];
 char clientPWDs[MAX_CLIENTS][MAX_PWD_LEN];
+char *clientSendBuf[MAX_CLIENTS];
+char *clientRecvBuf[MAX_CLIENTS];
 
 sem_t w_mutex;					//threads acquire lock before modifying clientSockets, numClients;
 int readCount = 0;				//read count for clients reading clientSockets
@@ -212,6 +221,8 @@ void* handleConnection(void *Args){
 		if(sendlen==-1){ //error
 			printf("[error] sending to socket %d\n", connectionSocket);
 		}
+		free(sendmsg);
+		free(recvmsg);
 		close(connectionSocket);
 		numClients--;
 		pthread_exit(NULL);
@@ -237,6 +248,9 @@ void* handleConnection(void *Args){
 			clientIDs[clientInd] = 0;
 			close(clientSockets[clientInd]);
 			numClients--;
+			free(sendmsg);
+			free(recvmsg);
+			free(tokens);
 			pthread_exit(NULL);
 		}
 		else{
@@ -244,18 +258,18 @@ void* handleConnection(void *Args){
 	
 			if(recvmsg[0] == 0) {
 				printf("blank msg received\n");
-				continue;
-			}
-			args = parseCommand(recvmsg, tokens);
-			// printf("parsed the command\n");
+			}else{
+				args = parseCommand(recvmsg, tokens);
+				// printf("parsed the command\n");
 
-			//check and execute if internal command
-			if (exec_internal(args, clientInd)==-1) {
-				//informing client
-				sprintf(sendmsg, "[error] %s is not valid command\n", args[0]);
-				sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
-				if(sendlen==-1){ //error
-					printf("[error] sending to socket %d\n", connectionSocket);
+				//check and execute if internal command
+				if (exec_internal(args, clientInd)==-1) {
+					//informing client
+					sprintf(sendmsg, "[error] %s is not valid command\n", args[0]);
+					sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+					if(sendlen==-1){ //error
+						printf("[error] sending to socket %d\n", connectionSocket);
+					}
 				}
 			}
 			sprintf(sendmsg, "%s@server:%s$ ", userNames[clientIDs[clientInd]], clientPWDs[clientInd]);
@@ -296,6 +310,9 @@ void* handleConnection(void *Args){
 			// }
 		}
 	}
+	free(sendmsg);
+	free(recvmsg);
+	free(tokens);
 }
 
 
@@ -325,20 +342,26 @@ int setupFileSystem(void){
 	fprintf(lsPtr, "%s\n", HOME_OWNER);
 	//remove DENTRY added to dirName
 	dirName[strlen(dirName)-strlen(DENTRY)] = 0;
-
-
 	fclose(lsPtr);
-	char buf[MAX_USERNAME_LEN];
-	while (numUser<MAX_USERS && fscanf(userDBptr, "%s", buf)==1 ) {
-		strcpy(userNames[numUser], buf);
 
-		//now read the group name
-		if ( fscanf(userDBptr, "%s", buf)==1 ){
-			strcpy(userGroup[numUser], buf);
-		}else{
-			fprintf(stderr, "[error] wrong user database format\n");
-			fclose(userDBptr);
-			return -1;
+
+	size_t bufsize = MAX_USERNAME_LEN * (MAX_GROUPS_PER_USER + 2);
+	char *buf = malloc( bufsize * sizeof(char) );
+	char *token;
+	while (numUser<MAX_USERS &&	getline(&buf, &bufsize, userDBptr)!=-1 ) {
+		printf("setupFileSystem: read line %s\n", buf);
+		token = strtok(buf, " ");
+
+		//copy username
+		strcpy(userNames[numUser], token);
+
+		//now read the group names
+		token = strtok(NULL, " ");
+		int grpNum = 0;
+		while(token != NULL && grpNum < MAX_GROUPS_PER_USER) {
+			strcpy(userGroups[numUser][grpNum], buf);
+			token = strtok(NULL, " ");
+			grpNum++;
 		}
 		
 		printf("making directory for %s\n", userNames[numUser]);
@@ -350,20 +373,23 @@ int setupFileSystem(void){
 				fclose(userDBptr);
 				return -1;
 			}
+			printf("setupFileSystem: %s already created\n", dirName);
 		}else{
+			printf("setupFileSystem: %s newly created\n", dirName);
 			strcpy(dirName+ strlen(PATH_HOME) + strlen(userNames[numUser]), DENTRY);
 			//create a file to store ls of directory
 			lsPtr = fopen(dirName, "w+");
 			//user
 			fprintf(lsPtr, "%s\n", userNames[numUser]);
 			// group
-			fprintf(lsPtr, "%s\n", userGroup[numUser]);
+			fprintf(lsPtr, "%s\n", userNames[numUser]);
 
 			fclose(lsPtr);
 
 		}
 		numUser++;
 	}
+	free(buf);
 	fclose(userDBptr);
 	return 0;
 
@@ -411,6 +437,8 @@ int authAndConnect(int connectionSocket) {
 	sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 	if(sendlen==-1){ //error
 		printf("[error] sending to socket %d\n", connectionSocket);
+		free(sendmsg);
+		free(recvmsg);
 		return -1;
 	}
 	//receive the msg
@@ -420,10 +448,14 @@ int authAndConnect(int connectionSocket) {
 	*strchr(recvmsg, '\n') = 0;
 	if(recvlen==-1){ //error
 		printf("[error] receiving from socket %d\n", connectionSocket);
+		free(sendmsg);
+		free(recvmsg);
 		return -1;
 		
 	}else if(recvlen==0){
 		printf("client socket %d disconnected abruptly\n", connectionSocket);
+		free(sendmsg);
+		free(recvmsg);
 		return -1;
 
 	}else{
@@ -434,11 +466,15 @@ int authAndConnect(int connectionSocket) {
 				//check if this user is already connected
 				if( userConnected(userInd) > 0 ) {
 					printf("user %s already present", recvmsg);
+					free(sendmsg);
+					free(recvmsg);
 					return -1;
 				}else {
 					ind = getEmptySpot();
 					if (ind==-1){
 						printf("no empty spot for connections");
+						free(sendmsg);
+						free(recvmsg);
 						return -1;
 					}else{
 						printf("user %s connected\n", userNames[userInd]);
@@ -447,14 +483,21 @@ int authAndConnect(int connectionSocket) {
 						clientSockets[ind] = connectionSocket;
 						strcpy(clientPWDs[ind], PATH_HOME);
 						strcpy(clientPWDs[ind]+strlen(PATH_HOME), userNames[userInd]);
+						//allocate memory for sending and receiving
+						clientSendBuf[ind] = malloc(MSG_LEN*sizeof(char));
+						clientRecvBuf[ind] = malloc(MSG_LEN*sizeof(char));
 					
 						//informing client
 						sprintf(sendmsg, "server: authenticated\n%s@server:%s$ ", userNames[userInd], clientPWDs[ind]);
 						sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 						if(sendlen==-1){ //error
 							printf("[error] sending to socket %d\n", connectionSocket);
+							free(sendmsg);
+							free(recvmsg);
 							return -1;
 						}
+						free(sendmsg);
+						free(recvmsg);
 						return ind;
 					}					
 				}
@@ -462,6 +505,8 @@ int authAndConnect(int connectionSocket) {
 			userInd++;
 		}
 	}
+	free(sendmsg);
+	free(recvmsg);
 	return -1;
 }
 
@@ -505,7 +550,6 @@ void* informExit(void *args){
 			exit(0);	
 		}
 	}
-
 }
 
 
@@ -587,7 +631,7 @@ int updatePWD(char *path, int clientInd) {
 
 int cd(char **args, int clientInd) {
 	size_t sendmsglen = MSG_LEN*sizeof(char);
-	char *sendmsg = malloc(sendmsglen);
+	char *sendmsg = clientSendBuf[clientInd];
 	int sendlen;
 
 	printf("cd: change directory\n");
@@ -636,25 +680,26 @@ int isUser(char *username) {
 
 int isGrp(char *grp) {
 	printf("isGrp: checking %s\n", grp);
-	for(int i=0; i<MAX_USERS; i++) {
-		if( userGroup[i]!=NULL && strcmp(grp, userGroup[i])==0 ) {
-			printf("isGrp: %s is grp\n", grp);
-			return 0;
-		}
-	}
-	printf("isGrp: %s is not grp\n", grp);
-	return -1;
+	return isUser(grp);
+	// for(int i=0; i<MAX_USERS; i++) {
+	// 	if( userGroups[i]!=NULL && strcmp(grp, userGroups[i])==0 ) {
+	// 		printf("isGrp: %s is grp\n", grp);
+	// 		return 0;
+	// 	}
+	// }
+	// printf("isGrp: %s is not grp\n", grp);
+	// return -1;
 
 }
 
 
 int create_dir(char **args, int clientInd) {
 	size_t recvmsglen = MSG_LEN*sizeof(char);
-	char *recvmsg = malloc(recvmsglen);
+	char *recvmsg = clientRecvBuf[clientInd];
 	size_t recvlen, sendlen;
 
 	size_t sendmsglen = MSG_LEN*sizeof(char);
-	char *sendmsg = malloc(sendmsglen);
+	char *sendmsg = clientSendBuf[clientInd];
 
 	printf("create_dir: create directory %s\n", args[0]);
 
@@ -713,9 +758,32 @@ int create_dir(char **args, int clientInd) {
 	char fileUser[MAX_USERNAME_LEN];
 	char fileGrp[MAX_USERNAME_LEN];
 
-	strcpy(fileUser, userNames[clientIDs[clientInd]]);
-	strcpy(fileGrp, userGroup[clientIDs[clientInd]]);
+	//get association from parent directory
+	*ptr = 0;
+	strcpy(path+ strlen(path), DENTRY);
+	printf("create_dir: getting dir association from parent %s\n", path);
 
+	FILE* fptr = fopen(path, "w+");
+	//now read the user name from parent dentry
+	if ( fscanf(fptr, "%s", fileUser)!=1 ){
+		fprintf(stderr, "[error] wrong dentry database format\n");
+		fclose(fptr);
+		return -1;
+	}
+
+	//now read the grp name from parent dentry
+	if ( fscanf(fptr, " %s", fileGrp)!=1 ){
+		fprintf(stderr, "[error] wrong dentry database format\n");
+		fclose(fptr);
+		return -1;
+	}
+	fclose(fptr);
+
+
+	//remove the extra /../DENTRY added for reading parent dir
+	path[strlen(path) - 3 - strlen(DENTRY)] = 0;
+
+	//create a dentry for this new dir
 	strcpy(path+ strlen(path), DENTRY);
 	//create a file to store ls of directory
 	FILE* lsPtr = fopen(path, "w+");
@@ -822,7 +890,7 @@ int exitShell(int clientInd) {
 
 int fget(char **args, int clientInd) {
 	size_t sendmsglen = MSG_LEN*sizeof(char);
-	char *sendmsg = malloc(sendmsglen);
+	char *sendmsg = clientSendBuf[clientInd];
 	int sendlen;
 
 	printf("fget: read file %s\n", args[0]);
@@ -889,6 +957,217 @@ int fget(char **args, int clientInd) {
 
 
 int fput(char **args, int clientInd) {
+	size_t recvmsglen = MSG_LEN*sizeof(char);
+	char *recvmsg = clientRecvBuf[clientInd];
+	size_t recvlen, sendlen;
+
+	size_t sendmsglen = MSG_LEN*sizeof(char);
+	char *sendmsg = clientSendBuf[clientInd];
+
+	printf("fput: write file %s\n", args[0]);
+
+	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
+	if(args[0]!=NULL && args[0][0]=='/'){
+		strcpy(path, args[0]);
+	}else{
+		strcpy(path, clientPWDs[clientInd]);
+		if(args[0]!=NULL) {
+			strcpy(path + strlen(path), "/");
+			strcpy(path + strlen(path), args[0]);
+		}
+	}
+
+	//check if one level up directory exists and allows writing
+	char *ptr = strrchr(path, '/');
+	*ptr = 0;
+	if(validatePath(path) == -1) {
+		printf("fput: could not validate this path\n");
+		
+		sprintf(sendmsg, "fput: cannot access %s\n", args[0]);
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		return -1;
+	}
+	*ptr = '/';
+	//check if file already created
+	if ( access(path, F_OK) != 1 ) {
+		//authenticate write access for file, as file is already created
+		if(authFile(path, clientIDs[clientInd], 2, 0) == -1){
+			printf("fput: could not authenticate for file %s\n", args[0]);
+			
+			sprintf(sendmsg, "fput: permission denied. cannot write to %s\n", args[0]);
+			sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+			if(sendlen==-1){ //error
+				printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+				return -1;
+			}
+			return -1;
+		}
+	}else {
+		//authenticate write access to directory as we are about to create a file in it
+		*ptr = 0;
+		if(authFile(path, clientIDs[clientInd], 2, 1) == -1){
+			printf("fput: could not authenticate for file %s\n", args[0]);
+			
+			sprintf(sendmsg, "fput: permission denied. cannot write to %s\n", args[0]);
+			sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+			if(sendlen==-1){ //error
+				printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+				return -1;
+			}
+			return -1;
+		}
+
+		char fileUser[MAX_USERNAME_LEN];
+		char fileGrp[MAX_USERNAME_LEN];
+
+		//get association from parent directory
+		strcpy(path+ strlen(path), DENTRY);
+		printf("create_dir: getting dir association from parent %s\n", path);
+
+		FILE* fptr = fopen(path, "r");
+		//now read the user name from parent dentry
+		if ( fscanf(fptr, "%s", fileUser)!=1 ){
+			fprintf(stderr, "[error] wrong dentry database format\n");
+			fclose(fptr);
+			return -1;
+		}
+
+		//now read the grp name from parent dentry
+		if ( fscanf(fptr, " %s", fileGrp)!=1 ){
+			fprintf(stderr, "[error] wrong dentry database format\n");
+			fclose(fptr);
+			return -1;
+		}
+		fclose(fptr);
+
+		*ptr = '/';
+		//create the file 
+		FILE* filePtr = fopen(path, "w+");
+
+		sprintf(sendmsg, "fput: enter file owner ");
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		//receive the msg
+		printf("fput: waiting for client for username\n");
+		recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
+		*strchr(recvmsg, '\n') = 0;
+		if(recvlen==-1){ //error
+			printf("[error] receiving from socket %d\n", clientSockets[clientInd]);
+			return -1;
+			
+		}else if(recvlen==0){
+			printf("client socket %d disconnected abruptly\n", clientSockets[clientInd]);
+			return -1;
+		}else{
+			printf("client response received\n");
+		}
+		if(isUser(recvmsg)==0) {
+			printf("fput: changing owner to %s\n", recvmsg);
+			strcpy(fileUser, recvmsg);
+		}else{
+			printf("fput: default owner\n");
+			if(recvmsg[0]=='\n') {
+				sprintf(sendmsg, "fput: setting default owner %s\n", fileUser);
+			}else{
+				sprintf(sendmsg, "fput: %s not a user. setting default owner\n", recvmsg);
+			}
+			sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+			if(sendlen==-1){ //error
+				printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+				return -1;
+			}
+
+		}
+		
+		sprintf(sendmsg, "fput: enter dir group ");
+		sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+		if(sendlen==-1){ //error
+			printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+			return -1;
+		}
+		//receive the msg
+		printf("fput: waiting for client for file grp\n");
+		recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
+		*strchr(recvmsg, '\n') = 0;
+		if(recvlen==-1){ //error
+			printf("[error] receiving from socket %d\n", clientSockets[clientInd]);
+			return -1;
+			
+		}else if(recvlen==0){
+			printf("client socket %d disconnected abruptly\n", clientSockets[clientInd]);
+			return -1;
+		}else{
+			printf("client response received\n");
+		}
+		if(isGrp(recvmsg)==0) {
+			printf("fput: changing grp to %s\n", recvmsg);
+			strcpy(fileGrp, recvmsg);
+		}else{
+			printf("fput: default grp\n");
+			if(recvmsg[0]=='\n') {
+				sprintf(sendmsg, "fput: setting default grp %s\n", fileGrp);
+
+			}else{
+				sprintf(sendmsg, "fput: %s not a group. setting default grp %s\n", recvmsg, fileGrp);
+			}
+			sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+			if(sendlen==-1){ //error
+				printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+				return -1;
+			}
+		}
+
+		//user
+		fprintf(filePtr, "%s\n", fileUser);
+		// group
+		fprintf(filePtr, "%s\n", fileGrp);
+		fclose(filePtr);
+
+		printf("fput: created file %s\n", path);
+
+
+		return 0;
+
+	}
+
+	sprintf(sendmsg, "fput: enter the content to put. Type %s to finish writing.\n", FILE_END);
+	sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+	if(sendlen==-1){ //error
+		printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+		return -1;
+	}	
+
+	putContent(path, clientInd);
+	return 0;
+}
+
+int putContent(char *path, int clientInd) {
+	printf("putContent: to %s\n", path);
+	FILE* filePtr = fopen(path, "a");
+	if(filePtr==NULL) {
+		printf("putContent: some error opening %s for append\n", path);
+	}
+
+	printf("putContent: receiving content for %s\n", path);
+
+	size_t recvmsglen = MSG_LEN*sizeof(char);
+	char *recvmsg = clientRecvBuf[clientInd];
+	size_t recvlen;
+
+	*strrchr(recvmsg, '\n') = 0;
+
+	while( strcmp(FILE_END, recvmsg) != 0 ){  //read until end of file
+		recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
+		fprintf(filePtr, "%s\n", recvmsg);	
+	}
+	printf("putContent: finished receiving\n");
 	return 0;
 }
 
@@ -903,18 +1182,26 @@ int validatePath(char *path) {
 	printf("abs path %s\nabs path home %s\n", absPath, absPathHome);
 	size_t lenPre = strlen(absPathHome); 
 	if ( strncmp(absPath, absPathHome, lenPre) == 0 ) {
-		//check if this directory exists
-		strcpy(absPath + strlen(absPath), DENTRY);
-		FILE* filePtr = fopen(absPath, "r");
-		if(filePtr!=NULL){
-			//dentry exusts i.e. file exists
+		//check if this file exists
+		if ( access(path, F_OK) != 1 ) {
 			return 0;
+		}else {
+			printf("validatePath: %s does not exist\n", path);
 		}
-
 	}
 
 
 	printf("could not validate path %s\n", path);
+	return -1;
+}
+
+
+int inGrp(char *usergrp, int userID) {
+	for(int i=0; i<MAX_GROUPS_PER_USER; i++) {
+		if ( strcmp(userGroups[userID][i], usergrp)==0 ) {
+			return 0;
+		}
+	}
 	return -1;
 }
 
@@ -938,7 +1225,7 @@ int authFile(char *path, int userID, int mode, int isDir) {
 	char usergrp[MAX_USERNAME_LEN];
 	int file_mode = 0;
 	if ( fscanf(dentryPtr, "%s", username)==1 && fscanf(dentryPtr, " %s", usergrp) ){
-		if( strcmp(username, userNames[userID])==0 || strcmp(usergrp, userGroup[userID]) == 0) {
+		if( strcmp(username, userNames[userID])==0 || inGrp(usergrp, userID)==0 ) {
 			file_mode = file_mode ^ 4;
 			printf("authFile: has read permission. File mode %d\n", file_mode);
 		}			
@@ -964,7 +1251,7 @@ int authFile(char *path, int userID, int mode, int isDir) {
 
 int ls(char **args, int clientInd) {
 	size_t sendmsglen = MSG_LEN*sizeof(char);
-	char *sendmsg = malloc(sendmsglen);
+	char *sendmsg = clientSendBuf[clientInd];
 	int sendlen;
 
 	printf("ls: doing ls\n");

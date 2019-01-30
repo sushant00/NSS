@@ -92,7 +92,7 @@ int main(void){
 			exit(1);
 		}
 
-		if(strcmp(EXIT_REQUEST, command)==0){				
+		if(strncmp(EXIT_REQUEST, command, strlen(command)-1)==0){	//-1 for \n added to command			
 			printf("closing client\n");
 			close(clientSocket);
 			exit(0);
