@@ -91,8 +91,8 @@ int main(void){
 			close(clientSocket);
 			exit(1);
 		}
-
-		if(strncmp(EXIT_REQUEST, command, strlen(command)-1)==0){	//-1 for \n added to command			
+		*strrchr(command, '\n') = 0;
+		if(strcmp(EXIT_REQUEST, command)==0){	//-1 for \n added to command			
 			printf("closing client\n");
 			close(clientSocket);
 			exit(0);

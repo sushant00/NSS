@@ -22,16 +22,19 @@
 #define MAX_CLIENTS 10
 
 #define SERVER_PORT 12000
+#define MSG_LEN 2024
+
 #define EXIT_REQUEST "exit"
 #define FILE_END "end"
-#define MSG_LEN 2024
+#define EMPTY_CLIENT_MARK -1
+
 
 #define MAX_PWD_LEN 512
 #define COMMAND_LEN 1024
 #define MAX_TOKENS 50		//assume max tokens = 50
 
 #define HOME_OWNER "root"
-
+#define ROOT_DIR "slash"
 #define DENTRY "/dentry.dir"
 #define PATH_PASSWD "etc/passwd"
 #define PATH_HOME "slash/home/"
@@ -51,6 +54,7 @@ int authFile(char *dir_path, int userID, int mode, int isDir);
 int validatePath(char *path);
 int updatePWD(char *path, int clientInd);
 int putContent(char *path, int clientInd);
+int getAssociation(char *dir_path, char *fileUser, char *fileGrp);
 
 int isUser(char *username);
 int isGrp(char *grp);
@@ -245,7 +249,7 @@ void* handleConnection(void *Args){
 			}
 			
 			//takeaway client's ID and close socket
-			clientIDs[clientInd] = 0;
+			clientIDs[clientInd] = EMPTY_CLIENT_MARK;
 			close(clientSockets[clientInd]);
 			numClients--;
 			free(sendmsg);
@@ -412,7 +416,7 @@ int userConnected(int userID) {
 int getEmptySpot(void) {
 	int clientInd = 0;
 	while( clientInd < MAX_CLIENTS ) {
-		if(clientIDs[clientInd] == -1) {
+		if(clientIDs[clientInd] == EMPTY_CLIENT_MARK) {
 			return clientInd;
 		}
 		clientInd+=1;
@@ -514,7 +518,7 @@ int authAndConnect(int connectionSocket) {
 //
 int initVars(void) {
 	for(int i=0; i<MAX_CLIENTS; i++) {
-		clientIDs[i] = -1;
+		clientIDs[i] = EMPTY_CLIENT_MARK;
 	}
 }
 
@@ -534,7 +538,7 @@ void* informExit(void *args){
 			
 			//tell each client
 			for(int i = 0; i<MAX_CLIENTS; i++){
-				if(clientIDs[i] != 0){
+				if(clientIDs[i] != EMPTY_CLIENT_MARK){
 					sendlen = send(clientSockets[i], (void *)command, commandlen, MSG_NOSIGNAL);
 					if(sendlen==-1){ //error
 						printf("error sending to socket %d\n", clientSockets[i]);
@@ -637,7 +641,7 @@ int cd(char **args, int clientInd) {
 	printf("cd: change directory\n");
 
 	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
-	if(args[0]!=NULL && args[0][0]=='/'){
+	if(args[0]!=NULL && strcmp(args[0], ROOT_DIR)==0){
 		strcpy(path, args[0]);
 	}else{
 		strcpy(path, clientPWDs[clientInd]);
@@ -704,7 +708,7 @@ int create_dir(char **args, int clientInd) {
 	printf("create_dir: create directory %s\n", args[0]);
 
 	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
-	if(args[0]!=NULL && args[0][0]=='/'){
+	if(args[0]!=NULL && strcmp(args[0], ROOT_DIR)==0){
 		strcpy(path, args[0]);
 	}else{
 		strcpy(path, clientPWDs[clientInd]);
@@ -760,28 +764,12 @@ int create_dir(char **args, int clientInd) {
 
 	//get association from parent directory
 	*ptr = 0;
-	strcpy(path+ strlen(path), DENTRY);
-	printf("create_dir: getting dir association from parent %s\n", path);
-
-	FILE* fptr = fopen(path, "w+");
-	//now read the user name from parent dentry
-	if ( fscanf(fptr, "%s", fileUser)!=1 ){
-		fprintf(stderr, "[error] wrong dentry database format\n");
-		fclose(fptr);
-		return -1;
+	if( getAssociation(path, fileUser, fileGrp) == -1) {
+		printf("create_dir: error getting associations from dir %s\n", path);
 	}
-
-	//now read the grp name from parent dentry
-	if ( fscanf(fptr, " %s", fileGrp)!=1 ){
-		fprintf(stderr, "[error] wrong dentry database format\n");
-		fclose(fptr);
-		return -1;
-	}
-	fclose(fptr);
-
-
-	//remove the extra /../DENTRY added for reading parent dir
-	path[strlen(path) - 3 - strlen(DENTRY)] = 0;
+	// restore the actual filename
+	*ptr = '/';
+	printf("create_dir: creating file %s\n", path);
 
 	//create a dentry for this new dir
 	strcpy(path+ strlen(path), DENTRY);
@@ -799,7 +787,7 @@ int create_dir(char **args, int clientInd) {
 	//receive the msg
 	printf("create_dir: waiting for client for username\n");
 	recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
-	*strchr(recvmsg, '\n') = 0;
+	*strrchr(recvmsg, '\n') = 0;
 	if(recvlen==-1){ //error
 		printf("[error] receiving from socket %d\n", clientSockets[clientInd]);
 		return -1;
@@ -810,12 +798,12 @@ int create_dir(char **args, int clientInd) {
 	}else{
 		printf("client response received\n");
 	}
-	if(isUser(recvmsg)==0) {
+	if(strlen(recvmsg)!=0 && isUser(recvmsg)==0) {
 		printf("create_dir: changing owner to %s\n", recvmsg);
 		strcpy(fileUser, recvmsg);
 	}else{
 		printf("create_dir: default owner\n");
-		if(recvmsg[0]=='\n') {
+		if(strlen(recvmsg)==0) {
 			sprintf(sendmsg, "create_dir: setting default owner %s\n", fileUser);
 		}else{
 			sprintf(sendmsg, "create_dir: %s not a user. setting default owner\n", recvmsg);
@@ -837,7 +825,7 @@ int create_dir(char **args, int clientInd) {
 	//receive the msg
 	printf("create_dir: waiting for client for file grp\n");
 	recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
-	*strchr(recvmsg, '\n') = 0;
+	*strrchr(recvmsg, '\n') = 0;
 	if(recvlen==-1){ //error
 		printf("[error] receiving from socket %d\n", clientSockets[clientInd]);
 		return -1;
@@ -848,12 +836,12 @@ int create_dir(char **args, int clientInd) {
 	}else{
 		printf("client response received\n");
 	}
-	if(isGrp(recvmsg)==0) {
+	if(strlen(recvmsg)!=0 && isGrp(recvmsg)==0) {
 		printf("create_dir: changing grp to %s\n", recvmsg);
 		strcpy(fileGrp, recvmsg);
 	}else{
 		printf("create_dir: default grp\n");
-		if(recvmsg[0]=='\n') {
+		if(strlen(recvmsg)==0) {
 			sprintf(sendmsg, "create_dir: setting default grp %s\n", fileGrp);
 
 		}else{
@@ -881,7 +869,7 @@ int create_dir(char **args, int clientInd) {
 int exitShell(int clientInd) {
 	printf("client %s disconnected\n", userNames[clientIDs[clientInd]]);
 	//takeaway client's ID and close socket
-	clientIDs[clientInd] = 0;
+	clientIDs[clientInd] = EMPTY_CLIENT_MARK;
 	close(clientSockets[clientInd]);
 	numClients--;
 	pthread_exit(NULL);
@@ -896,7 +884,7 @@ int fget(char **args, int clientInd) {
 	printf("fget: read file %s\n", args[0]);
 
 	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
-	if(args[0]!=NULL && args[0][0]=='/'){
+	if(args[0]!=NULL && strcmp(args[0], ROOT_DIR)==0){
 		strcpy(path, args[0]);
 	}else{
 		strcpy(path, clientPWDs[clientInd]);
@@ -934,7 +922,7 @@ int fget(char **args, int clientInd) {
 	//print the file content
 	FILE* filePtr = fopen(path, "r");
 	if(filePtr==NULL){
-		printf("some error opening %s\n", path);
+		printf("fget: some error opening %s\n", path);
 		fclose(filePtr);
 		return -1;
 	}
@@ -956,6 +944,31 @@ int fget(char **args, int clientInd) {
 }
 
 
+//stores directory owner in fileuser and grp in filegrp
+int getAssociation(char *dir_path, char *fileUser, char *fileGrp) {
+	char path[strlen(PATH_HOME) + MAX_PWD_LEN];
+	strcpy(path, dir_path);
+	strcpy(path+ strlen(path), DENTRY);
+	printf("getAssociation: getting file association from parent %s\n", path);
+
+	FILE* fptr = fopen(path, "r");
+	//now read the user name from parent dentry
+	if ( fscanf(fptr, "%s", fileUser)!=1 ){
+		fprintf(stderr, "[error] wrong dentry database format\n");
+		fclose(fptr);
+		return -1;
+	}
+
+	//now read the grp name from parent dentry
+	if ( fscanf(fptr, " %s", fileGrp)!=1 ){
+		fprintf(stderr, "[error] wrong dentry database format\n");
+		fclose(fptr);
+		return -1;
+	}
+	fclose(fptr);
+}
+
+
 int fput(char **args, int clientInd) {
 	size_t recvmsglen = MSG_LEN*sizeof(char);
 	char *recvmsg = clientRecvBuf[clientInd];
@@ -967,7 +980,7 @@ int fput(char **args, int clientInd) {
 	printf("fput: write file %s\n", args[0]);
 
 	char path[ strlen(PATH_HOME) + MAX_PWD_LEN ];
-	if(args[0]!=NULL && args[0][0]=='/'){
+	if(args[0]!=NULL && strcmp(args[0], ROOT_DIR)==0){
 		strcpy(path, args[0]);
 	}else{
 		strcpy(path, clientPWDs[clientInd]);
@@ -993,7 +1006,8 @@ int fput(char **args, int clientInd) {
 	}
 	*ptr = '/';
 	//check if file already created
-	if ( access(path, F_OK) != 1 ) {
+	if ( access(path, F_OK) == 0 ) {
+		printf("fput: %s file already created\n", path);
 		//authenticate write access for file, as file is already created
 		if(authFile(path, clientIDs[clientInd], 2, 0) == -1){
 			printf("fput: could not authenticate for file %s\n", args[0]);
@@ -1025,26 +1039,12 @@ int fput(char **args, int clientInd) {
 		char fileGrp[MAX_USERNAME_LEN];
 
 		//get association from parent directory
-		strcpy(path+ strlen(path), DENTRY);
-		printf("create_dir: getting dir association from parent %s\n", path);
-
-		FILE* fptr = fopen(path, "r");
-		//now read the user name from parent dentry
-		if ( fscanf(fptr, "%s", fileUser)!=1 ){
-			fprintf(stderr, "[error] wrong dentry database format\n");
-			fclose(fptr);
-			return -1;
+		if( getAssociation(path, fileUser, fileGrp) == -1) {
+			printf("fput: error getting associations from dir %s\n", path);
 		}
-
-		//now read the grp name from parent dentry
-		if ( fscanf(fptr, " %s", fileGrp)!=1 ){
-			fprintf(stderr, "[error] wrong dentry database format\n");
-			fclose(fptr);
-			return -1;
-		}
-		fclose(fptr);
-
+		// restore the actual filename
 		*ptr = '/';
+		printf("fput: creating file %s\n", path);
 		//create the file 
 		FILE* filePtr = fopen(path, "w+");
 
@@ -1057,23 +1057,24 @@ int fput(char **args, int clientInd) {
 		//receive the msg
 		printf("fput: waiting for client for username\n");
 		recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
-		*strchr(recvmsg, '\n') = 0;
+		printf("fput: received %zd bytes, msg: %s\n", recvlen, recvmsg);
+		*strrchr(recvmsg, '\n') = 0;
 		if(recvlen==-1){ //error
 			printf("[error] receiving from socket %d\n", clientSockets[clientInd]);
 			return -1;
 			
 		}else if(recvlen==0){
-			printf("client socket %d disconnected abruptly\n", clientSockets[clientInd]);
+			printf("fput: client socket %d disconnected abruptly\n", clientSockets[clientInd]);
 			return -1;
 		}else{
-			printf("client response received\n");
+			printf("fput: client response received\n");
 		}
-		if(isUser(recvmsg)==0) {
+		if(strlen(recvmsg)!=0 && isUser(recvmsg)==0) {
 			printf("fput: changing owner to %s\n", recvmsg);
 			strcpy(fileUser, recvmsg);
 		}else{
-			printf("fput: default owner\n");
-			if(recvmsg[0]=='\n') {
+			printf("fput: default owner %s\n", fileUser);
+			if(strlen(recvmsg)==0) {
 				sprintf(sendmsg, "fput: setting default owner %s\n", fileUser);
 			}else{
 				sprintf(sendmsg, "fput: %s not a user. setting default owner\n", recvmsg);
@@ -1095,6 +1096,7 @@ int fput(char **args, int clientInd) {
 		//receive the msg
 		printf("fput: waiting for client for file grp\n");
 		recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
+		printf("fput: received %zd bytes, msg: %s\n", recvlen, recvmsg);
 		*strchr(recvmsg, '\n') = 0;
 		if(recvlen==-1){ //error
 			printf("[error] receiving from socket %d\n", clientSockets[clientInd]);
@@ -1106,12 +1108,12 @@ int fput(char **args, int clientInd) {
 		}else{
 			printf("client response received\n");
 		}
-		if(isGrp(recvmsg)==0) {
+		if(strlen(recvmsg)!=0 && isGrp(recvmsg)==0) {
 			printf("fput: changing grp to %s\n", recvmsg);
 			strcpy(fileGrp, recvmsg);
 		}else{
 			printf("fput: default grp\n");
-			if(recvmsg[0]=='\n') {
+			if(strlen(recvmsg)==0) {
 				sprintf(sendmsg, "fput: setting default grp %s\n", fileGrp);
 
 			}else{
@@ -1132,12 +1134,9 @@ int fput(char **args, int clientInd) {
 
 		printf("fput: created file %s\n", path);
 
-
-		return 0;
-
 	}
 
-	sprintf(sendmsg, "fput: enter the content to put. Type %s to finish writing.\n", FILE_END);
+	sprintf(sendmsg, "fput: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 	sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 	if(sendlen==-1){ //error
 		printf("[error] sending to socket %d\n", clientSockets[clientInd]);
@@ -1161,12 +1160,18 @@ int putContent(char *path, int clientInd) {
 	char *recvmsg = clientRecvBuf[clientInd];
 	size_t recvlen;
 
-	*strrchr(recvmsg, '\n') = 0;
-
-	while( strcmp(FILE_END, recvmsg) != 0 ){  //read until end of file
+	while( 1 ){  //read until end of file
 		recvlen = recv(clientSockets[clientInd], (void *)recvmsg, recvmsglen, 0);
+		*strrchr(recvmsg, '\n') = 0;
+
+		//end of file encountered
+		if(strcmp(FILE_END, recvmsg) == 0) {
+			break;
+		}
+
 		fprintf(filePtr, "%s\n", recvmsg);	
 	}
+	fclose(filePtr);
 	printf("putContent: finished receiving\n");
 	return 0;
 }
@@ -1183,7 +1188,7 @@ int validatePath(char *path) {
 	size_t lenPre = strlen(absPathHome); 
 	if ( strncmp(absPath, absPathHome, lenPre) == 0 ) {
 		//check if this file exists
-		if ( access(path, F_OK) != 1 ) {
+		if ( access(path, F_OK) == 0 ) {
 			return 0;
 		}else {
 			printf("validatePath: %s does not exist\n", path);
@@ -1213,10 +1218,10 @@ int authFile(char *path, int userID, int mode, int isDir) {
 	if(isDir){
 		strcpy(file_path + strlen(file_path), DENTRY);
 	}
-	printf("authenticating user %s for dir %s\n", userNames[userID], file_path);
+	printf("authFile: authenticating user %s for dir %s\n", userNames[userID], file_path);
 	FILE* dentryPtr = fopen(file_path, "r");
 	if(dentryPtr==NULL){
-		printf("some error opening %s\n", file_path);
+		printf("authFile: some error opening %s\n", file_path);
 		fclose(dentryPtr);
 		return -1;
 	}
@@ -1224,7 +1229,7 @@ int authFile(char *path, int userID, int mode, int isDir) {
 	char username[MAX_USERNAME_LEN];
 	char usergrp[MAX_USERNAME_LEN];
 	int file_mode = 0;
-	if ( fscanf(dentryPtr, "%s", username)==1 && fscanf(dentryPtr, " %s", usergrp) ){
+	if ( fscanf(dentryPtr, "%s", username)==1 && fscanf(dentryPtr, " %s", usergrp)==1 ){
 		if( strcmp(username, userNames[userID])==0 || inGrp(usergrp, userID)==0 ) {
 			file_mode = file_mode ^ 4;
 			printf("authFile: has read permission. File mode %d\n", file_mode);
@@ -1257,7 +1262,7 @@ int ls(char **args, int clientInd) {
 	printf("ls: doing ls\n");
 	
 	char dirName[ strlen(PATH_HOME) + MAX_PWD_LEN ];
-	if(args[0]!=NULL && args[0][0]=='/'){
+	if(args[0]!=NULL && strcmp(args[0], ROOT_DIR)==0){
 		strcpy(dirName, args[0]);
 	}else{
 		strcpy(dirName, clientPWDs[clientInd]);
@@ -1302,7 +1307,7 @@ int ls(char **args, int clientInd) {
 	}
 
 	//authenticated read access
-	printf("ls: authenticated for read access\n");
+	printf("ls: authenticated for read access %s\n", dirName);
 
 	DIR *d;
 	struct dirent *dir;
@@ -1324,17 +1329,20 @@ int ls(char **args, int clientInd) {
 
 			//reuse dirName as fileName by first appending filename and later removing
 			strcpy(dirName + strlen(dirName), "/");
-			printf("ls: filename %s\n", dirName);
+			printf("ls: dir name %s\n", dirName);
 			strcpy(dirName + strlen(dirName), dir->d_name);
+			//if this is a directory read the dentry of the file
+			if ( dir->d_type == DT_DIR ) {
+				printf("ls: %s is a dir\n", dirName);
+				strcpy(dirName + strlen(dirName), DENTRY);
+			}
 			printf("ls: filename %s\n", dirName);
 			filePtr = fopen(dirName, "r");
-			//remove add filename from dir name
-			dirName[strlen(dirName)-strlen(dir->d_name)] = 0;
 			if(filePtr==NULL){
-				printf("some error opening %s\n", dir->d_name);
+				printf("ls: some error opening %s\n", dir->d_name);
 				return -1;
 			}
-			if ( fscanf(filePtr, "%s", username) && fscanf(filePtr, "%s", usergrp) ){
+			if ( fscanf(filePtr, "%s", username)==1 && fscanf(filePtr, "%s", usergrp)==1 ){
 				//print this file's entry for ls
 				printf("ls: printing directory entry\n");
 				sprintf(sendmsg, "%-20s  %-20s  %-20s\n", dir->d_name, username, usergrp);
@@ -1347,37 +1355,15 @@ int ls(char **args, int clientInd) {
 				printf("ls: could not read username and grpname for file %s\n", dir->d_name);
 				return -1;
 			}
-			fclose(filePtr);		
+			fclose(filePtr);
+
+			//remove add filename from dir name
+			*strrchr(dirName, '/')= 0;	
 		}
 		closedir(d);
 	} else{
 		perror("ls: could not open the directory");
 		return -1;
-	}
-
-
-	// FILE* lsPtr = fopen(dirName, "r");
-	// if(lsPtr==NULL){
-	// 	printf("some error opening %s\n", dirName);
-	// 	fclose(lsPtr);
-	// 	return -1;
-	// }
-	// while(getline(&sendmsg, &sendmsglen, lsPtr)!=-1){  //read until end of file
-	// 	//informing client
-	// 	sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
-	// 	if(sendlen==-1){ //error
-	// 		printf("[error] sending to socket %d\n", clientSockets[clientInd]);
-	// 		fclose(lsPtr);
-	// 		return -1;
-	// 	}	
-	// }
-	// sprintf(sendmsg, "%s@server:%s$ ", userNames[clientIDs[clientInd]], clientPWDs[clientInd]);
-	// sendlen = send(clientSockets[clientInd], (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
-	// if(sendlen==-1){ //error
-	// 	printf("[error] sending to socket %d\n", clientSockets[clientInd]);
-	// 	fclose(lsPtr);
-	// 	return -1;
-	// }	
-	// fclose(lsPtr);					
+	}			
 	return 0;
 }
