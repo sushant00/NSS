@@ -62,7 +62,6 @@ int isGrp(char *grp);
 int inGrp(char *usergrp, int userID);
 int getEmptySpot(void);
 
-char *readCommand();
 char **parseCommand(char *command, char **tokens);
 int exec_internal(char **args, int clientInd);
 
@@ -440,7 +439,7 @@ int authAndConnect(int connectionSocket) {
 		printf("client response received\n");
 		int userInd = 0;
 		while(userInd < MAX_USERS){
-			if(strcmp(userNames[userInd], recvmsg)==0) {
+			if(strlen(userNames[userInd])!=0 && strcmp(userNames[userInd], recvmsg)==0) {
 				//check if this user is already connected
 				if( userConnected(userInd) >= 0 ) {
 					printf("user %s already present", recvmsg);	
@@ -543,16 +542,6 @@ void* informExit(void *args){
 }
 
 
-
-
-char *readCommand(){
-	getline(&line, &bufsize,stdin);
-	if(bufsize>100){
-		fprintf(stderr, "shell: input line is too long\n");
-		bufsize = 100;
-	}
-	return line;
-}
 
 
 char **parseCommand(char * command, char **tokens){
@@ -659,7 +648,7 @@ int cd(char **args, int clientInd) {
 int isUser(char *username) {
 	printf("isUser: checking %s\n", username);
 	for(int i=0; i<MAX_USERS; i++) {
-		if( userNames[i]!=NULL && strcmp(username, userNames[i])==0 ) {
+		if( strlen(userNames[i])!=0 && strcmp(username, userNames[i])==0 ) {
 			printf("isUser: %s is user\n", username);
 			return 0;
 		}
@@ -1137,8 +1126,8 @@ int validatePath(char *path) {
 int inGrp(char *usergrp, int userID) {
 	printf("inGrp: check %d %s in grp %s\n", userID, userNames[userID], usergrp);
 	for(int i=0; i<MAX_GROUPS_PER_USER; i++) {
-		printf("inGrp: %d %s is in grp %s\n", userID, userNames[userID], userGroups[userID][i]);
-		if ( strcmp(userGroups[userID][i], usergrp)==0 ) {
+		// printf("inGrp: %d %s is in grp %s\n", userID, userNames[userID], userGroups[userID][i]);
+		if ( strlen(userGroups[userID][i])!=0 && strcmp(userGroups[userID][i], usergrp)==0 ) {
 			printf("inGrp: %d %s is in grp %s\n", userID, userNames[userID], usergrp);
 			return 0;
 		}

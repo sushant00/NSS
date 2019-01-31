@@ -26,7 +26,8 @@ int main(void){
 	//dont buffer the output
 	setbuf(stdout, NULL);
 
-	char *serverName = malloc(sizeof(char)*COMMAND_LEN);
+	size_t serverNameLen = sizeof(char)*COMMAND_LEN;
+	char *serverName = malloc(serverNameLen);
 
 	printf("starting client...\n");
 
@@ -49,8 +50,8 @@ int main(void){
 
 
 	//IPv4 server address
-	// printf("enter serverName (ip address) e.g. 127.0.0.1\n");
-	// scanf("%s", serverName);
+	printf("enter serverName (ip address) e.g. 127.0.0.1\n");
+	fgets(serverName, serverNameLen, stdin);
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(SERVER_PORT);		//host to network byte(big endian) short
 	inet_pton(AF_INET, (const char *)serverName, &server_addr.sin_addr);
