@@ -42,6 +42,7 @@ int fput(int argc, char **args){
 		//create the file
 		FILE* file = fopen(args[0], "w+");
 		fclose(file);
+		chown(args[0], getuid(), getgid());
 		if ( inheritAcl(args[0])==-1 ){
 			printf("fput: error inheriting acls from parent for %s\n", args[0]);
 			return -1;

@@ -42,6 +42,8 @@ int create_dir(int argc, char **args){
 	if(mkdir(args[0], 0777) == -1){
 		printf("create_dir: %s\n", strerror(errno));
 		return -1;
+	}else{		
+		chown(args[0], getuid(), getgid());
 	}
 
 	if ( inheritAcl(args[0])==-1 ){
