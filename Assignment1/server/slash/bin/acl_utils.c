@@ -48,6 +48,7 @@ const char *types[NUM_TYPES] = {"m", "g", "u", "o"};
 int validateAclEntry(char * aclentry, int withPerms);
 int auth(char *path); 
 int getOwnerInfo(char *path);
+int inheritAcl(char *path);
 
 int validateAclEntry(char * aclline, int withPerms) {
 	char *aclentry = malloc(MAX_ACL_LEN);
@@ -295,3 +296,78 @@ int authPerm(char *path, unsigned int reqd_perm) {
 }
 
 
+
+int inheritAcl(char *path) {	
+	
+	//inherit acl from parent dir
+	printf("inheritAcl: %s\n", path);
+	char parentDir[ strlen(PATH_HOME) + MAX_PWD_LEN ];
+	strcpy(parentDir, path);
+	*strrchr(parentDir, '/') = 0;
+
+	printf("inheritAcl: parent dir %s\n", parentDir);
+
+	int status;
+	ssize_t vallen;
+	char *key, *val;
+
+	key = malloc(strlen(ACL_ATTRIB_NAME) + MAX_ACL_LEN);
+	strcpy(key, ACL_ATTRIB_NAME);
+	char *typeStart = strchr(key, 0);
+
+	strcpy(typeStart, ":u:");
+	vallen = getxattr(parentDir, key, NULL, 0);
+	val = malloc(vallen+1);
+	vallen = getxattr(parentDir, key, val, vallen);
+	if(vallen == -1) {
+		perror("inheritAcl: error getting acl from parent");
+		return -1;
+	}
+	status = setxattr(path, key, (void *)val, vallen, XATTR_CREATE);
+	if (status == -1){
+		perror("inheritAcl: error setting acl");
+		return -1;
+	}	
+
+	strcpy(typeStart, ":g:");
+	vallen = getxattr(parentDir, key, NULL, 0);
+	val = malloc(vallen+1);
+	vallen = getxattr(parentDir, key, val, vallen);
+	if(vallen == -1) {
+		perror("inheritAcl: error getting acl from parent");
+		return -1;
+	}
+	status = setxattr(path, key, (void *)val, vallen, XATTR_CREATE);
+	if (status == -1){
+		perror("inheritAcl: error setting acl");
+		return -1;
+	}
+
+	strcpy(typeStart, ":o:");
+	vallen = getxattr(parentDir, key, NULL, 0);
+	val = malloc(vallen+1);
+	vallen = getxattr(parentDir, key, val, vallen);
+	if(vallen == -1) {
+		perror("inheritAcl: error getting acl from parent");
+		return -1;
+	}
+	status = setxattr(path, key, (void *)val, vallen, XATTR_CREATE);
+	if (status == -1){
+		perror("inheritAcl: error setting acl");
+		return -1;
+	}
+
+
+	strcpy(typeStart, ":m:");
+	vallen = getxattr(parentDir, key, NULL, 0);
+	val = malloc(vallen+1);
+	vallen = getxattr(parentDir, key, val, vallen);
+	if(vallen != -1){
+		status = setxattr(path, key, (void *)val, vallen, XATTR_CREATE);
+		if (status == -1){
+			perror("inheritAcl: error setting acl");
+			return -1;
+		}
+	}
+	return 0;
+}

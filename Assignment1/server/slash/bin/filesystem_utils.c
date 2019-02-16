@@ -27,9 +27,7 @@
 #define PATH_HOME "slash/home/"
 
 
-int authFile(char *dir_path, int userID, int mode, int isDir);
 int validatePath(char *path);
-int putContent(char *path, int clientInd);
 
 //checks if this path is accessible by the server
 int validatePath(char *path) {

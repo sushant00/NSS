@@ -13,3 +13,5 @@ geteuid
 getegid
 seteuid
 stat
+
+check for named acl user vs other

@@ -1,6 +1,6 @@
 .PHONY: clean
 
-all: getacl setacl setattr ls fget
+all: getacl setacl setattr ls fget fput
 
 getacl: getacl.c
 	gcc -o getacl getacl.c
@@ -22,6 +22,9 @@ fget: fget.c
 
 fput: fput.c
 	gcc -o fput fput.c
+
+do_exec: do_exec.c
+	gcc -o do_exec do_exec.c
 	
 clean:
-	rm getacl setacl setattr ls fget
+	rm getacl setacl setattr ls fget fput

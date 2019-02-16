@@ -35,7 +35,7 @@ int fget(int argc, char **args){
 	size_t linelen = MAX_LINE_LEN*sizeof(char);
 	char *line = malloc(linelen);
 	while(getline(&line, &linelen, filePtr)!=-1){  //read until end of file
-		printf("%s\n", line);	
+		printf("%s", line);	
 	}
 	
 	printf("\n");
