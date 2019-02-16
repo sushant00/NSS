@@ -159,13 +159,14 @@ Assumptions
 - only absolute paths can be entered, with base directory as **server/**
 
 
-Bugs defended
+Bugs and Errors defended
 =============
 
 - paths entered as arguments are validated
-- wrong commands, arguments or inputs are gracefully handled
-- DAC is overriden by acl
-- cannot make acl entry for non existent users
+- wrong arguments or inputs for acls, etc. are gracefully handled
+- making acl entry for non existent users is not allowed
+- access behind slash is not allowed
+- handling overwriting of directory that is already created
 
 
 

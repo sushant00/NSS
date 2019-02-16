@@ -26,14 +26,14 @@ int fput(int argc, char **args){
 		printf("fput: %s file already created\n", args[0]);
 		//authenticate write access for file, as file is already created
 		if(authPerm(args[0], 2) == -1){
-			printf("fput: could not authenticate for file %s\n", args[0]);
+			printf("fput: permission denied for file %s\n", args[0]);
 			return -1;
 		}
 	} else {
 		//authenticate write access to directory as we are about to create a file in it
 		*ptr = 0;
 		if(authPerm(args[0], 2) == -1){
-			printf("fput: could not authenticate for file %s\n", args[0]);
+			printf("fput: permission denied for file %s\n", args[0]);
 			return -1;
 		}
 
@@ -44,6 +44,7 @@ int fput(int argc, char **args){
 		fclose(file);
 		if ( inheritAcl(args[0])==-1 ){
 			printf("fput: error inheriting acls from parent for %s\n", args[0]);
+			return -1;
 		}
 	}
 
@@ -53,6 +54,12 @@ int fput(int argc, char **args){
 	printf("fput: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 
 	putContent(args[0]);
+
+	if (seteuid(getuid())==-1){
+		printf("fput: error setting euid\n");
+	}
+	printf("fput: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
+	
 	return 0;
 }
 

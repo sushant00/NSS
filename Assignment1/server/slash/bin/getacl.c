@@ -15,7 +15,7 @@ int getacl(int argc, char **args){
 		return -1;
 	}
 	if( auth(args[0])==-1) {
-		printf("getacl: authentication for file path %s failed\n", args[0]);
+		printf("getacl: permission denied for file path %s\n", args[0]);
 		return -1;
 	}	
 

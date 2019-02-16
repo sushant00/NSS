@@ -17,7 +17,7 @@ int fget(int argc, char **args){
 		return -1;
 	}
 	if( authPerm(args[0], 4)==-1 ) {
-		printf("fget: authentication for file path %s failed\n", args[0]);
+		printf("fget: permission denied file path %s failed\n", args[0]);
 		return -1;
 	}
 

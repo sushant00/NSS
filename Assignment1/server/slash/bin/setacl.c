@@ -31,7 +31,7 @@ int setacl(int argc, char **args){
 			return -1;
 		}
 		if( auth(args[2])==-1) {
-			printf("setacl: authentication for file path %s failed\n", args[2]);
+			printf("setacl: permission denied for file path %s\n", args[2]);
 			return -1;
 		}
 
