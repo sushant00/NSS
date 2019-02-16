@@ -24,11 +24,6 @@ int ls(int argc, char **args){
 	//authenticated read access
 	printf("ls: authenticated for read access %s\n", args[0]);
 
-	printf("\n");
-	if (seteuid(getuid())==-1){
-		printf("ls: error setting euid\n");
-	}
-	printf("ls: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
 
 
 	DIR *d;
@@ -90,6 +85,13 @@ int ls(int argc, char **args){
 
 
 		}
+		
+		printf("\n");
+		if (seteuid(getuid())==-1){
+			printf("ls: error setting euid\n");
+		}
+		printf("ls: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
+
 		closedir(d);
 	} else{
 		perror("ls: could not open the directory");

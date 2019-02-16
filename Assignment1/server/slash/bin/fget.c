@@ -24,12 +24,6 @@ int fget(int argc, char **args){
 	//authenticated read access
 	printf("fget: authenticated for read access %s\n", args[0]);
 
-	printf("\n");
-	if (seteuid(getuid())==-1){
-		printf("fget: error setting euid\n");
-	}
-	printf("fget: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
-
 	//print the file content
 	FILE* filePtr = fopen(args[0], "r");
 	if(filePtr==NULL){
@@ -43,6 +37,13 @@ int fget(int argc, char **args){
 	while(getline(&line, &linelen, filePtr)!=-1){  //read until end of file
 		printf("%s\n", line);	
 	}
+	
+	printf("\n");
+	if (seteuid(getuid())==-1){
+		printf("fget: error setting euid\n");
+	}
+	printf("fget: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
+
 	return 0;
 }
 

@@ -35,11 +35,6 @@ int setacl(int argc, char **args){
 			return -1;
 		}
 
-		if (seteuid(getuid())==-1){
-			printf("setacl: error setting euid\n");
-		}
-		printf("setacl: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
-
 
 		char *key = malloc(strlen(ACL_ATTRIB_NAME) + MAX_ACL_LEN);
 		strcpy(key, ACL_ATTRIB_NAME);
@@ -74,6 +69,14 @@ int setacl(int argc, char **args){
 		printf("setacl: supply arguments, usage: setacl <-m|-x> <acl entry> <filename>\n");
 		return -1;
 	}
+
+	printf("\n");
+	if (seteuid(getuid())==-1){
+		printf("setacl: error setting euid\n");
+	}
+	printf("setacl: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
+
+
 	printf("setacl: success\n");
 	return 0;
 }

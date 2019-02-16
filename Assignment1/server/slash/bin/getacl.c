@@ -19,11 +19,6 @@ int getacl(int argc, char **args){
 		return -1;
 	}	
 
-	if (seteuid(getuid())==-1){
-		printf("getacl: error setting euid\n");
-	}
-	printf("getacl: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
-	
 	printf("\n");
 	printf("# file %s\n", args[0]);
 	printf("# owner %s\n", owner_uname);
@@ -75,6 +70,11 @@ int getacl(int argc, char **args){
 	}
 
 
+	if (seteuid(getuid())==-1){
+		printf("getacl: error setting euid\n");
+	}
+	printf("getacl: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
+	
 
 	// char *val;
 	// size_t 
