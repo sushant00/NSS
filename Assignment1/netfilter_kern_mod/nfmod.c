@@ -45,16 +45,13 @@ unsigned int hook_func(unsigned int hooknum, struct sk_buff *skb, const struct n
 
     unsigned int Flags[6];
     char FlagsStr[7];
-//    printk(KERN_INFO "nfmod: hook func called\n");
+    // printk(KERN_INFO "nfmod: hook func called\n");
 
     ip_header = ip_hdr(skb);
 
     if(ip_header->protocol == IPPROTO_TCP) {
-        printk(KERN_INFO "nfmod: TCP Packet captured\n");
+        // printk(KERN_INFO "nfmod: TCP Packet captured\n");
 	tcp_header = tcp_hdr(skb);
-
-//       	printk(KERN_INFO "nfmod: TCP Source Port: %u\n", tcp_header->source);
-//        printk(KERN_INFO "nfmod: TCP Destination Port: %u\n", tcp_header->dest);
 
         //find the flags set in the packet
         FlagsStr[6] = 0;
@@ -106,21 +103,23 @@ unsigned int hook_func(unsigned int hooknum, struct sk_buff *skb, const struct n
             Flags[5] = 0;
         }
 
-//        printk(KERN_INFO "nfmod: TCP Packet Flags %s\n", FlagsStr);
+      	printk(KERN_INFO "nfmod: TCP Source Port: %u\n", tcp_header->source);
+        printk(KERN_INFO "nfmod: TCP Destination Port: %u\n", tcp_header->dest);
+        // printk(KERN_INFO "nfmod: TCP Packet Flags %s\n", FlagsStr);
 
         if(!Flags[0] && !Flags[1] && !Flags[2] && !Flags[3] && !Flags[4] && !Flags[5] ) {
-            printk(KERN_INFO "nfmod: TCP NULL SCAN\n");
+            printk(KERN_INFO "nfmod: TCP NULL SCAN Source Port: %u Dest Port: %u\n", tcp_header->source, tcp_header->dest);
         } else if (!Flags[0] && !Flags[1] && !Flags[2] && !Flags[3] && Flags[4] && !Flags[5]) {
-            printk(KERN_INFO "nfmod: TCP SYN SCAN\n");
+            printk(KERN_INFO "nfmod: TCP SYN SCAN Source Port: %u Dest Port: %u\n", tcp_header->source, tcp_header->dest);
 
         } else if (!Flags[0] && Flags[1] && !Flags[2] && !Flags[3] && !Flags[4] && !Flags[5]) {
-            printk(KERN_INFO "nfmod: TCP ACK SCAN\n");
+            printk(KERN_INFO "nfmod: TCP ACK SCAN Source Port: %u Dest Port: %u\n", tcp_header->source, tcp_header->dest);
             
         } else if (!Flags[0] && !Flags[1] && !Flags[2] && !Flags[3] && !Flags[4] && Flags[5]) {
-            printk(KERN_INFO "nfmod: TCP FIN SCAN\n");
+            printk(KERN_INFO "nfmod: TCP FIN SCAN Source Port: %u Dest Port: %u\n", tcp_header->source, tcp_header->dest);
             
         } else if (Flags[0] && !Flags[1] && Flags[2] && !Flags[3] && !Flags[4] && Flags[5] ) {
-            printk(KERN_INFO "nfmod: TCP XMAS SCAN\n");
+            printk(KERN_INFO "nfmod: TCP XMAS SCAN Source Port: %u Dest Port: %u\n", tcp_header->source, tcp_header->dest);
             
         }
     }
