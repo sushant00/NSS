@@ -1,6 +1,16 @@
-validate the acls string
-check if username exists in acl
+commands used to add the users
 
+sudo useradd -m -d /home/sushant/Desktop/nss/Assignment1/server/slash/home/user1 user1
+sudo passwd user1
+
+sudo useradd -m -d /home/sushant/Desktop/nss/Assignment1/server/slash/home/user2 user2
+sudo passwd user2
+
+sudo useradd -m -d /home/sushant/Desktop/nss/Assignment1/server/slash/home/user3 user3
+sudo passwd user3
+
+sudo useradd fakeroot
+sudo passwd fakeroot
 
 syscalls:
 getpwuid
@@ -13,5 +23,3 @@ geteuid
 getegid
 seteuid
 stat
-
-check for named acl user vs other

@@ -147,6 +147,7 @@ Assumptions
 - set of group names are same as set of user names
 - only absolute paths can be entered
 - commands are run with base directory as **server/**
+- initially there are 3 users: user1, user2, user3 and fakeroot with password same as username
 
 
 Bugs and Errors defended
