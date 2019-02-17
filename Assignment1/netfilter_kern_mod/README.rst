@@ -7,13 +7,14 @@ NET FILTER KERNEL MODULE
 
 Description
 ===========
-	This kernel module captures the packet and identifies the type of TCP reconnaissance performed. 
-	Following type of TCP reconnaissance are detected:
-	1. Xmas Scan
-	2. Null Scan
-	3. Syn Scan
-	4. Ack Scan
-	5. Fin Scan
+This kernel module captures the packet and identifies the type of TCP reconnaissance performed. 
+Following type of TCP reconnaissance are detected
+
+1. Xmas Scan
+2. Null Scan
+3. Syn Scan
+4. Ack Scan
+5. Fin Scan
 
 
 Get Started
@@ -76,11 +77,11 @@ Hook Function
 -------------
 This function checks if the packet is a TCP packet. If it is a TCP packet then the *flags* from tcp header are checked. Various combination of flags are checked to detect the type of reconnaissance.
 
-NULL: All flag bits are 0
-XMAS: Urg, Fin, Psh flag bits are set
-SYN: only Syn bit is set
-ACK: only Ack bit is set
-Fin: only Fin bit is set
+- NULL: All flag bits are 0
+- XMAS: Urg, Fin, Psh flag bits are set
+- SYN: only Syn bit is set
+- ACK: only Ack bit is set
+- Fin: only Fin bit is set
 
 Exit
 ----
