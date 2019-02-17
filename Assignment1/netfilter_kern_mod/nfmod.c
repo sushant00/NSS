@@ -103,8 +103,8 @@ unsigned int hook_func(unsigned int hooknum, struct sk_buff *skb, const struct n
             Flags[5] = 0;
         }
 
-      	printk(KERN_INFO "nfmod: TCP Source Port: %u\n", tcp_header->source);
-        printk(KERN_INFO "nfmod: TCP Destination Port: %u\n", tcp_header->dest);
+      	// printk(KERN_INFO "nfmod: TCP Source Port: %u\n", tcp_header->source);
+        // printk(KERN_INFO "nfmod: TCP Destination Port: %u\n", tcp_header->dest);
         // printk(KERN_INFO "nfmod: TCP Packet Flags %s\n", FlagsStr);
 
         if(!Flags[0] && !Flags[1] && !Flags[2] && !Flags[3] && !Flags[4] && !Flags[5] ) {

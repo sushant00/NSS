@@ -27,7 +27,7 @@ Remove :
 	
 To see the live kernel log:
 
-	sudo cat /proc/ksmg
+	sudo cat /proc/kmsg
 	
 Examples to perform various nmap reconnaissance:
 
