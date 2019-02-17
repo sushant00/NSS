@@ -10,4 +10,4 @@ install:
 	insmod nfmod.ko
 
 remove:
-	insmod nfmod.ko
+	rmmod nfmod.ko
