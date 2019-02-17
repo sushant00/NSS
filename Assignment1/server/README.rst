@@ -24,7 +24,7 @@ Supported commands can be run from server directory in following manner
 
 .. code:: shell
 
-  slash/bin/ls <dir>
+  slash/bin/ls slash/home
   
  
 
@@ -137,17 +137,6 @@ slash/etc/passwd stores the user and group associations
 slash/home/ui is the home directory for ith user
 
 
-Security Rules
-==============
-
-- a user is given write access to a dir or file only if it is the owner
-- a user is given read access to a dir or file only if is is the owner or is member of the group of corresponding file or dir
-- by default users are denied connection or any access if not authenticated
-- a user can be in multiple groups
-- a file or dir can have only one owner and only one group
-
-
-
 Assumptions
 ============
 
@@ -156,7 +145,8 @@ Assumptions
 - **/home/ui** directory has ui itself as the owner and group
 - a user can be in maximum 10 groups
 - set of group names are same as set of user names
-- only absolute paths can be entered, with base directory as **server/**
+- only absolute paths can be entered
+- commands are run with base directory as **server/**
 
 
 Bugs and Errors defended
