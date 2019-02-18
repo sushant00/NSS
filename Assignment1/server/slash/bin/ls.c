@@ -22,7 +22,7 @@ int ls(int argc, char **args){
 		return -1;
 	}	
 	//authenticated read access
-	printf("ls: authenticated for read access %s\n", args[0]);
+	printf("ls: authenticated for read access %s\n\n", args[0]);
 
 
 

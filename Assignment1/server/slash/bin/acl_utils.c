@@ -23,7 +23,7 @@
 #define MAX_ACL_LEN 100
 #define MAX_TYPE_LEN 1
 #define MAX_NAME_LEN 50
-#define PERM_LEN 5
+#define PERM_LEN 3
 #define NUM_TYPES 4
 
 struct file_acl_data
@@ -53,6 +53,7 @@ int authDACPerm(char *path, unsigned int reqd_perm);
 int authPerm(char *path, unsigned int reqd_perm);
 
 int validateAclEntry(char * aclline, int withPerms) {
+	perm = 0;
 	char *aclentry = malloc(MAX_ACL_LEN);
 	strcpy(aclentry, aclline);
 	printf("validateAclEntry: %s\n", aclentry);

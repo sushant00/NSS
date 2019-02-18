@@ -77,7 +77,7 @@ int getacl(int argc, char **args){
 	if (seteuid(getuid())==-1){
 		printf("getacl: error setting euid\n");
 	}
-	printf("getacl: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
+	printf("\ngetacl: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
 	
 
 	// char *val;
