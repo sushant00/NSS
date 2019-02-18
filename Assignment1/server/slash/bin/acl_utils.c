@@ -23,7 +23,7 @@
 #define MAX_ACL_LEN 100
 #define MAX_TYPE_LEN 1
 #define MAX_NAME_LEN 50
-#define PERM_LEN 3
+#define PERM_LEN 5
 #define NUM_TYPES 4
 
 struct file_acl_data
@@ -35,12 +35,12 @@ struct file_acl_data
 unsigned int owner_uid;
 unsigned int owner_gid;
 
-char *owner_uname;
-char *owner_gname;
+char owner_uname[MAX_NAME_LEN];
+char owner_gname[MAX_NAME_LEN];
 
-char *type;
-char *name;
-char *perms;
+char type[MAX_TYPE_LEN];
+char name[MAX_NAME_LEN];
+char perms[PERM_LEN];
 unsigned int perm;
 
 const char *types[NUM_TYPES] = {"m", "g", "u", "o"};
@@ -68,7 +68,7 @@ int validateAclEntry(char * aclline, int withPerms) {
 	int found = 0;
 	for( int i = 0; i<NUM_TYPES; i++) {
 		if( strcmp(aclentry, types[i])==0 ){
-			type = aclentry;
+			strcpy(type, aclentry);
 			found = 1;
 		}
 	}
@@ -91,7 +91,7 @@ int validateAclEntry(char * aclline, int withPerms) {
 	//TODO: Add a check to validate the usernames
 	struct passwd spass;
 	if(strlen(aclentry)==0 || getpwnam(aclentry) != NULL) {
-		name = aclentry;
+		strcpy(name, aclentry);
 	}else{
 		printf("validateAclEntry: user %s does not exist\n", aclentry);
 		return -1;
@@ -129,7 +129,7 @@ int validateAclEntry(char * aclline, int withPerms) {
 				printf("validateAclEntry: wrong perm format\n");
 			}
 		}
-		perms = aclentry;
+		strcpy(perms, aclentry);
 	}
 
 	return 0;
@@ -176,9 +176,13 @@ int getOwnerInfo(char *path) {
 		perror("getOwnerInfo: error finding owner grp");
 		return -1;
 	}
+
+	// owner_uname = malloc(MAX_NAME_LEN);
+	// owner_gname = malloc(MAX_NAME_LEN);
 	
-	owner_uname = pw_s->pw_name;
-	owner_gname = grp_s->gr_name;
+	strcpy(owner_uname, pw_s->pw_name);
+	strcpy(owner_gname, grp_s->gr_name);
+
 
 	printf("getOwnerInfo: owner_uname: %s\n", owner_uname);
 	printf("getOwnerInfo: owner_gname: %s\n", owner_gname);
@@ -235,11 +239,12 @@ int authPerm(char *path, unsigned int reqd_perm) {
 
 	unsigned int has_perm = 0;
 
+
+	getOwnerInfo(path);
+
 	struct group *grp;
 	struct passwd *pw;
 
-
-	getOwnerInfo(path);
 
 	pw = getpwuid(getuid());
 	if(pw == NULL) {
@@ -251,7 +256,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 		perror("authPerm: error finding owner grp");
 		return -1;
 	}
-	printf("authPerm: uid %u, name %s\n", getuid(), pw->pw_name);
+	printf("authPerm: uid %u, current user %s, owner %s\n", getuid(), pw->pw_name, owner_uname);
 
 	//referred to man listxattr(2)
 	ssize_t buflen, keylen, vallen;
