@@ -49,6 +49,8 @@ int validateAclEntry(char * aclentry, int withPerms);
 int auth(char *path); 
 int getOwnerInfo(char *path);
 int inheritAcl(char *path);
+int authDACPerm(char *path, unsigned int reqd_perm);
+int authPerm(char *path, unsigned int reqd_perm);
 
 int validateAclEntry(char * aclline, int withPerms) {
 	char *aclentry = malloc(MAX_ACL_LEN);
@@ -177,7 +179,48 @@ int getOwnerInfo(char *path) {
 	
 	owner_uname = pw->pw_name;
 	owner_gname = grp->gr_name;
+
+	printf("getOwnerInfo: owner_uname: %s\n", owner_uname);
+	printf("getOwnerInfo: owner_gname: %s\n", owner_gname);
+
 	return 0;
+}
+
+int authDACPerm(char *path, unsigned int reqd_perm) {
+	struct stat sb;
+	if (stat(path, &sb) == -1) {
+		perror("authDACPerm: stat");
+		return -1;
+	}
+	unsigned int has_perm = 0;
+	if(getuid() == sb.st_uid) {
+		if(S_IRUSR & sb.st_mode) {
+			has_perm = has_perm ^ 4;
+		}
+		if(S_IWUSR & sb.st_mode) {
+			has_perm = has_perm ^ 2;
+		}
+		if(S_IXUSR & sb.st_mode) {
+			has_perm = has_perm ^ 1;
+		}
+	}else {
+		if(S_IROTH & sb.st_mode) {
+			has_perm = has_perm ^ 4;
+		}
+		if(S_IWOTH & sb.st_mode) {
+			has_perm = has_perm ^ 2;
+		}
+		if(S_IXOTH & sb.st_mode) {
+			has_perm = has_perm ^ 1;
+		}
+	}
+
+	if ((reqd_perm & has_perm) >= reqd_perm) {
+		printf("authDACPerm: authenticated\n");
+		return 0;
+	}
+	printf("authDACPerm: could not authenticate. reqd perms %u has perms %u\n", reqd_perm, has_perm);
+	return -1;
 }
 
 
@@ -218,7 +261,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 		return -1;
 	} else if (buflen == 0) {
 		printf("authPerm: no acl entries\n");
-		return -1;
+		return authDACPerm(path, reqd_perm);
 	}
 
 	buf = malloc(buflen);
@@ -261,6 +304,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 				}
 				if ( strcmp(name, pw->pw_name)==0 ) {
 					has_perm = has_perm | perm;
+					break;
 				}
 
 			} else if ( strcmp(type, "g") == 0 ) {
@@ -271,6 +315,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 				}
 				if ( strcmp(name, grp->gr_name)==0 ) {
 					has_perm = has_perm | perm;
+					break;
 				}
 
 			} else if ( strcmp(type, "o") == 0 ) {
@@ -289,7 +334,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 		printf("authPerm: authenticated\n");
 		return 0;
 	}
-	printf("%d %d\n", reqd_perm & has_perm, reqd_perm);
+	// printf("%d %d\n", reqd_perm & has_perm, reqd_perm);
 	printf("authPerm: could not authenticate. reqd perms %u has perms %u\n", reqd_perm, has_perm);
 	return -1;
 

@@ -19,6 +19,10 @@ int getacl(int argc, char **args){
 		return -1;
 	}	
 
+	if(getOwnerInfo(args[0])==-1) {
+		printf("getacl: error getting owner info\n");
+	}
+
 	printf("\n");
 	printf("# file %s\n", args[0]);
 	printf("# owner %s\n", owner_uname);

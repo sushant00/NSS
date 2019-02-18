@@ -12,8 +12,7 @@ sudo passwd user3
 sudo useradd fakeroot
 sudo passwd fakeroot
 
-then modify /etc/passwd to make fakeroot uid, gid 0
-
+sudo usermod -aG sudo fakeroot
 
 syscalls:
 getpwuid

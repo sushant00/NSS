@@ -16,10 +16,20 @@ Run the following command on shell to compile the binaries from inside of server
 
 .. code:: shell
 
-  make
+  sudo make
   
  
+
 Step 2.
+Initialise the default permission for server directory
+
+.. code:: shell
+
+  sudo sh init.sh
+  
+ 
+
+Step 3.
 Supported commands can be run from server directory in following manner
 
 .. code:: shell
