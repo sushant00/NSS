@@ -279,6 +279,8 @@ int authPerm(char *path, unsigned int reqd_perm) {
 		return -1;
 	}
 
+	unsigned int mask_perm = 7;
+
 	key = buf;
 	printf("\n");
 	while (buflen > 0) {
@@ -332,13 +334,16 @@ int authPerm(char *path, unsigned int reqd_perm) {
 			} else if ( strcmp(type, "o") == 0 ) {
 				has_perm = has_perm | perm;
 			} else if ( strcmp(type, "m") == 0 ) {
-				has_perm = has_perm & perm;
+				mask_perm = mask_perm & perm;
 			}
 			printf("authPerm: has perms %u from %s\n", has_perm, key);
 		}
 		keylen = strlen(key) +1;
 		buflen -= keylen;
 		key = strchr(key, 0) + 1;
+	}
+	if(auth(path)==-1) {
+		has_perm = (has_perm & mask_perm);
 	}
 
 	if ((reqd_perm & has_perm) >= reqd_perm) {
