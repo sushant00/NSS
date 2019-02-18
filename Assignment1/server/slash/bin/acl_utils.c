@@ -163,22 +163,22 @@ int getOwnerInfo(char *path) {
 	owner_uid = sb.st_uid;
 	owner_gid = sb.st_uid;
 
-	struct group *grp;
-	struct passwd *pw;
+	struct group *grp_s;
+	struct passwd *pw_s;
 
-	pw = getpwuid(owner_uid);
-	if(pw == NULL) {
+	pw_s = getpwuid(owner_uid);
+	if(pw_s == NULL) {
 		perror("getOwnerInfo: error finding owner");
 		return -1;
 	}
-	grp = getgrgid(owner_gid);
-	if(grp == NULL) {
+	grp_s = getgrgid(owner_gid);
+	if(grp_s == NULL) {
 		perror("getOwnerInfo: error finding owner grp");
 		return -1;
 	}
 	
-	owner_uname = pw->pw_name;
-	owner_gname = grp->gr_name;
+	owner_uname = pw_s->pw_name;
+	owner_gname = grp_s->gr_name;
 
 	printf("getOwnerInfo: owner_uname: %s\n", owner_uname);
 	printf("getOwnerInfo: owner_gname: %s\n", owner_gname);
@@ -238,18 +238,20 @@ int authPerm(char *path, unsigned int reqd_perm) {
 	struct group *grp;
 	struct passwd *pw;
 
+
+	getOwnerInfo(path);
+
 	pw = getpwuid(getuid());
 	if(pw == NULL) {
-		perror("getOwnerInfo: error finding owner");
+		perror("authPerm: error finding owner");
 		return -1;
 	}
 	grp = getgrgid(getgid());
 	if(grp == NULL) {
-		perror("getOwnerInfo: error finding owner grp");
+		perror("authPerm: error finding owner grp");
 		return -1;
 	}
-
-	getOwnerInfo(path);
+	printf("authPerm: uid %u, name %s\n", getuid(), pw->pw_name);
 
 	//referred to man listxattr(2)
 	ssize_t buflen, keylen, vallen;
@@ -297,12 +299,15 @@ int authPerm(char *path, unsigned int reqd_perm) {
 			validateAclEntry(aclentry, 1);
 
 			if( strcmp(type, "u") == 0 ) {
+				printf("authPerm: %s %s\n", name, pw->pw_name);
 				if( strlen(name) == 0 ) {
+					printf("authPerm: owner entry owner: %s current user: %s\n", owner_uname, pw->pw_name);
 					if ( strcmp(owner_uname, pw->pw_name)==0 ) {
 						has_perm = has_perm | perm;
 					}
 				}
 				if ( strcmp(name, pw->pw_name)==0 ) {
+					printf("authPerm: named user entry %s\n", name);
 					has_perm = has_perm | perm;
 					break;
 				}

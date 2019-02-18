@@ -24,7 +24,7 @@
 #define ROOT_DIR "slash"
 #define DENTRY "/dentry.dir"
 #define PATH_PASSWD "etc/passwd"
-#define PATH_HOME "slash/home/"
+#define PATH_HOME "slash/"
 
 
 int validatePath(char *path);
