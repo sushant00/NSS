@@ -3,7 +3,7 @@ all: shellcode.s
 	ld shellcode.o -o shellcode
 
 clean:
-	rm -r shellcode shellcode.o input_to_victim.txt shellcode_dump
+	rm -r shellcode shellcode.o input_to_victim.txt shellcode_hex
 
 run: shellcode
 	./shellcode
