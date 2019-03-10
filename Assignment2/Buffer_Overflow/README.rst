@@ -12,6 +12,15 @@ We are given a binary (named 'victim') and we want to perform a buffer overflow 
 Get Started
 ===========
 
+Step 0
+-----------
+We would first turn the ASLR off (which is enabled by default on modern systems). We add the line **kernel.randomize_va_space=0** to end of file **/etc/sysctl.conf** and apply the changes by running the following command
+
+.. code:: shell
+
+	sysctl -p
+
+	
 Step 1
 -----------
 compile the assembly code 'shellcode.s', which would be the shellcode executed by victim on returning from main
@@ -75,6 +84,7 @@ Reference
 =========
 http://www-inst.eecs.berkeley.edu/~cs161/fa08/papers/stack_smashing.pdf
 https://crypto.stanford.edu/~blynn/rop/
+http://vadramanienka.blogspot.com/2013/04/how-to-disable-aslr-in-linux-permanently.html
 
 Author: Sushant Kumar Singh
 
