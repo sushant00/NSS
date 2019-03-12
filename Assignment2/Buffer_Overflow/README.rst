@@ -78,7 +78,9 @@ It creates the input to be passed to victim program of length buffersize. It fir
 
 
 
-
+Assumptions
+==========
+We may need to find and change the buffer address at the time of testing.
 
 
 Reference
