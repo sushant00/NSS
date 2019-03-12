@@ -84,7 +84,9 @@ It creates the input to be passed to victim program of length buffersize. It fir
 Reference
 =========
 http://www-inst.eecs.berkeley.edu/~cs161/fa08/papers/stack_smashing.pdf
+
 https://crypto.stanford.edu/~blynn/rop/
+
 http://vadramanienka.blogspot.com/2013/04/how-to-disable-aslr-in-linux-permanently.html
 
 Author: Sushant Kumar Singh
