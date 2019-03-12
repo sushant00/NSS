@@ -68,6 +68,7 @@ gen_input.sh
 This shell script uses the xxd command to generate the hex dump in little endian of the shellcode and puts in file 'shellcode_hex'
 It then compiles the explot.c file to binary 'exploit'.
 It then runs the exploit binary with arguments as 80 -32 20 (buffersize offset nopslen)
+**Note:** We cannot have 0a (hex value for newline character) in our shell code, otherwise the shell code would only be copied till the newline. This is because **gets** has been used to copy the shellcode to buffer. Similarly if strcpy was used, we would have to prevent the presence of 00 (hex value for null terminator). We can use **disas main** command inside **gdb** to analyse the same. 
 
 
 exploit.c
