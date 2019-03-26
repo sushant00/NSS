@@ -1,6 +1,6 @@
 .PHONY: clean
 
-all: getacl setacl setattr ls fget fput create_dir do_exec
+all: fverify fsign fget_decrypt fput_encrypt getacl setacl setattr ls fget fput create_dir do_exec
 
 getacl: getacl.c
 	gcc -o getacl getacl.c
@@ -25,6 +25,22 @@ fput: fput.c
 
 do_exec: do_exec.c
 	gcc -o do_exec do_exec.c
+
+
+
+fput_encrypt: fput_encrypt.c
+	gcc -o fput_encrypt fput_encrypt.c -lcrypto 
+
+fget_decrypt: fget_decrypt.c
+	gcc -o fget_decrypt fget_decrypt.c -lcrypto
+
+fsign: fsign.c
+	gcc -o fsign fsign.c -lcrypto 
+
+fverify: fverify.c
+	gcc -o fverify fverify.c -lcrypto
+
+
 	
 clean:
 	rm getacl setacl setattr ls fget fput create_dir do_exec
