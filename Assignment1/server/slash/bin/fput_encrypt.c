@@ -26,10 +26,19 @@ int fput_encrypt(int argc, char **args){
 
 	*ptr = '/';
 	if ( access(args[0], F_OK) == 0 ) {
-		printf("fput_encrypt: %s file already created\n", args[0]);
+		printf("fput_encrypt: %s file already created. Overwriting it\n", args[0]);
 		//authenticate write access for file, as file is already created
 		if(authPerm(args[0], 2) == -1){
 			printf("fput_encrypt: permission denied for file %s\n", args[0]);
+			return -1;
+		}
+
+		//create the file (and overwrite old)
+		FILE* file = fopen(args[0], "w+");
+		fclose(file);
+		chown(args[0], getuid(), getgid());
+		if ( inheritAcl(args[0])==-1 ){
+			printf("fput_encrypt: error inheriting acls from parent for %s\n", args[0]);
 			return -1;
 		}
 	} else {
@@ -56,12 +65,14 @@ int fput_encrypt(int argc, char **args){
 	//authenticated write access
 	printf("fput_encrypt: authenticated for write access %s\n", args[0]);
 
-	unsigned char *key = getKeyUser(getuid());
-	// unsigned char *iv = getIVUser(getuid());
-
+	unsigned char *key = malloc(KEY_LEN/32);
+	unsigned char *iv = malloc(KEY_LEN/32);
+	getKeyUser(getuid(), key, iv);
+	
 	char *outputContent = malloc(sizeof(char)*MAX_FILE_LEN);
 	char *encContent = malloc(sizeof(char)*(MAX_FILE_LEN + strlen(key) ));
-	int oldLen = getOldContent(args[0], (char *)outputContent);
+	int oldLen = 0;
+	// oldLen = getOldContent(args[0], (char *)outputContent);
 
 	printf("fput_encrypt: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 
@@ -91,6 +102,13 @@ int putEncryptedContent(char *path) {
 }
 
 int getOldContent(char *path, char *oldContent){
+	FILE *fp;
+	int c;
+	int index = 0;
+	fp = fopen(path, "r");
+	while((c = fgetc(fp) != EOF)) {
+		oldContent[index++] = c;
+	}
 	return 0;
 }
 
