@@ -32,24 +32,24 @@ int validatePath(char *path);
 
 //checks if this path is accessible by the server
 int validatePath(char *path) {
-	printf("validatePath: %s\n", path);
+	// printf("validatePath: %s\n", path);
 	char absPath[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	char absPathHome[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	realpath(PATH_HOME, absPathHome);
 	realpath(path, absPath);
-	printf("validatePath: abs path %s\nabs path home %s\n", absPath, absPathHome);
+	// printf("validatePath: abs path %s\nabs path home %s\n", absPath, absPathHome);
 	size_t lenPre = strlen(absPathHome); 
 	if ( strncmp(absPath, absPathHome, lenPre) == 0 ) {
 		//check if this file exists
 		if ( access(path, F_OK) == 0 ) {
 			return 0;
 		}else {
-			printf("validatePath: %s does not exist\n", path);
+			// printf("validatePath: %s does not exist\n", path);
 		}
 	}
 
 
-	printf("validatePath: could not validate path %s\n", path);
+	// printf("validatePath: could not validate path %s\n", path);
 	return -1;
 }
 

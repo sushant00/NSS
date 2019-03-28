@@ -90,8 +90,7 @@ fget
 
   fget <file>
   
-Get the contents of file. A user can read the file only if it has read access for the file.
-  
+Get the contents of file. A user can read the file only if it has read access for the file. Also verify the HMAC if present.
 
 fput
 ----
@@ -100,7 +99,7 @@ fput
 
   fput <file>
   
-Create file or append to file if it is already created. A user can create file only if it has write access of the parent dir. If the file is already created then append mode is started. A user can append to file only if it is the owner of the file. file can be absolute or realtive path. User can finish appending to file by typing **end** in a newline.
+Create file or append to file if it is already created. A user can create file only if it has write access of the parent dir. If the file is already created then append mode is started. A user can append to file only if it is the owner of the file. file can be absolute or realtive path. User can finish appending to file by typing **end** in a newline. Also create a file.sign storing HMAC of file.
 
   
 
@@ -112,6 +111,49 @@ do_exec
   do_exec <file>
   
 Run the file with permissions of the owner.
+
+
+fput_encrypt
+------------
+
+.. code:: shell
+
+  fput_encrypt <file>
+  
+Put encrypted content to file. It uses owner's password from shadow file to generate key and iv using SHA1 digest.It uses AES_256 encryption algorithm. Only the owner can append to a encrypted file.
+
+
+
+fget_decrypt
+------------
+
+.. code:: shell
+
+  fget_decrypt <file>
+  
+Get encrypted content from file in plaintext. It uses owner's password from shadow file to generate key and iv using SHA1 digest and decrypts the encrypted content. Only the owner can decrypt from a encrypted file, others would get error. If a file is already in plaintext then it is not decrypted.
+
+
+
+fsign
+------
+
+.. code:: shell
+
+  fsign <file>
+  
+Create HMAC of file and store in file.sign. It uses SHA1 digest. Anyone with read access for file and write access in corresponding directory can sign a file. Key and IV of derived from owner's password are used.
+
+
+
+fverify
+---------
+
+.. code:: shell
+
+  fverify <file>
+  
+Verify HMAC of the file by comparing from file.sign. If corresponding .sign does not exist then show error. Key and IV of derived from owner's password are used.
 
 
 Project Dir Structure
@@ -158,6 +200,7 @@ Assumptions
 - only absolute paths can be entered
 - commands are run with base directory as **server/**
 - initially there are 3 users: user1, user2, user3 and fakeroot with password same as username
+- fget outputs the result even if the HMAC validation fails but it reports that validation failed
 
 
 Bugs and Errors defended
@@ -168,7 +211,9 @@ Bugs and Errors defended
 - making acl entry for non existent users is not allowed
 - access behind slash is not allowed
 - handling overwriting of directory that is already created
-
+-graceful handling for decrypting corrupted file
+-fput_encrypt call on encrypted file and on plaintext file is handled
+-fget_decrypt call on encrypted file and on plaintext file is handled
 
 
 Developed by Sushant Kumar Singh

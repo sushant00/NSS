@@ -6,6 +6,7 @@
 #include <errno.h>
 
 #include <pwd.h>
+#include<sys/wait.h> 
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -48,7 +49,7 @@ int getPassword(int uid, unsigned char *buff) {
 		unameEnd = strchr(line, ':');
 		*unameEnd = 0;
 		if (strcmp(pw_s->pw_name, line) == 0){
-			printf("getPassword: found user match, uname %s\n", line);
+			// printf("getPassword: found user match, uname %s\n", line);
 			passwdEnd = strchr(unameEnd+1, ':');
 			*passwdEnd = 0;
 			strcpy(buff, unameEnd+1);
@@ -70,7 +71,7 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 	// unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	// int pass_len = ;
 
-	printf("getKeyIVUser: called for uid %d\n", uid);
+	// printf("getKeyIVUser: called for uid %d\n", uid);
 	int ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
 	if(!ret){
 		perror("getKeyIVUser: error generating key");
@@ -83,7 +84,7 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 		return -1;
 	}
 
-	printf("getKeyIVUser: key generated successfully %s\n", key);
+	// printf("getKeyIVUser: key generated successfully %s\n", key);
 	return 0;
 }
 
@@ -106,13 +107,13 @@ int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc
 
 	ret = EVP_CipherUpdate(ctx, output, &len, input, len_input);
 	if(!ret){
-		printf("cipher: Cipher update failed\n");
+		perror("cipher: Cipher update failed");
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
 	len_output+=len;
 
-	ret = EVP_CipherFinal_ex(ctx, output, &len);
+	ret = EVP_CipherFinal_ex(ctx, output+len, &len);
 	if(!ret){		
 		printf("cipher: Cipher final failed\n");
 		EVP_CIPHER_CTX_free(ctx);
@@ -128,7 +129,7 @@ int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc
 
 
 int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid) {
-	printf("calculateHMAC: called\n");
+	printf("calculateHMAC: called for len=%d,d=%s\n", len_d, d);
 	unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	getKeyIVUser(uid, key, iv);

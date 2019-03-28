@@ -8,6 +8,7 @@
 
 #include "filesystem_utils.c"
 
+#include<sys/wait.h> 
 #include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
@@ -56,13 +57,13 @@ int validateAclEntry(char * aclline, int withPerms) {
 	perm = 0;
 	char *aclentry = malloc(MAX_ACL_LEN);
 	strcpy(aclentry, aclline);
-	printf("validateAclEntry: %s\n", aclentry);
+	// printf("validateAclEntry: %s\n", aclentry);
 	//
-	printf("validateAclEntry: validate acl type\n");	
+	// printf("validateAclEntry: validate acl type\n");	
 	char *tokenEnd;
 	tokenEnd = strchr(aclentry, ACL_TOKENIZER);
 	if(tokenEnd == NULL) {
-		printf("validateAclEntry: wrong format of acl entry\n");
+		// printf("validateAclEntry: wrong format of acl entry\n");
 		return -1;
 	}
 	*tokenEnd = 0;
@@ -74,17 +75,17 @@ int validateAclEntry(char * aclline, int withPerms) {
 		}
 	}
 	if(found == 0) {
-		printf("validateAclEntry: wrong acl type %s\n", aclentry);
+		// printf("validateAclEntry: wrong acl type %s\n", aclentry);
 	}
 
 
 
 	//
-	printf("validateAclEntry: validate username\n");
+	// printf("validateAclEntry: validate username\n");
 	aclentry = tokenEnd+1;
 	tokenEnd = strchr(aclentry, ACL_TOKENIZER);
 	if(tokenEnd == NULL) {
-		printf("validateAclEntry: wrong format of acl entry\n");
+		// printf("validateAclEntry: wrong format of acl entry\n");
 		return -1;
 	}
 	*tokenEnd = 0;
@@ -94,17 +95,17 @@ int validateAclEntry(char * aclline, int withPerms) {
 	if(strlen(aclentry)==0 || getpwnam(aclentry) != NULL) {
 		strcpy(name, aclentry);
 	}else{
-		printf("validateAclEntry: user %s does not exist\n", aclentry);
+		// printf("validateAclEntry: user %s does not exist\n", aclentry);
 		return -1;
 	}
 
 
 
 	//
-	printf("validateAclEntry: validate permissions\n");
+	// printf("validateAclEntry: validate permissions\n");
 	aclentry = tokenEnd+1;
 	if (strlen(aclentry)!=PERM_LEN) {
-		printf("validateAclEntry: wrong perm format \n");
+		// printf("validateAclEntry: wrong perm format \n");
 		return -1;
 	}
 
@@ -113,21 +114,21 @@ int validateAclEntry(char * aclline, int withPerms) {
 			perm = perm ^ 4;
 		}else{
 			if (aclentry[0]!='-') {
-				printf("validateAclEntry: wrong perm format\n");
+				// printf("validateAclEntry: wrong perm format\n");
 			}
 		}
 		if( aclentry[1] == 'w'){
 			perm = perm ^ 2;
 		}else{
 			if (aclentry[1]!='-') {
-				printf("validateAclEntry: wrong perm format\n");
+				// printf("validateAclEntry: wrong perm format\n");
 			}
 		}
 		if( aclentry[2] == 'x'){
 			perm = perm ^ 1;
 		}else{
 			if (aclentry[2]!='-') {
-				printf("validateAclEntry: wrong perm format\n");
+				// printf("validateAclEntry: wrong perm format\n");
 			}
 		}
 		strcpy(perms, aclentry);
@@ -137,7 +138,7 @@ int validateAclEntry(char * aclline, int withPerms) {
 }
 
 int auth(char *path) {
-	printf("auth: current user id %d\n", getuid());
+	// printf("auth: current user id %d\n", getuid());
 	//check if root
 	if(getuid() == ROOT_PID) {
 		owner_uid = 0;
@@ -145,10 +146,10 @@ int auth(char *path) {
 		return 0;
 	}
 	getOwnerInfo(path);
-	printf("auth: file %s has owner UID %ld\n", path, (long)owner_uid);
+	// printf("auth: file %s has owner UID %ld\n", path, (long)owner_uid);
 
 	if(getuid()==owner_uid) {
-		printf("auth: authenticated\n");
+		// printf("auth: authenticated\n");
 		return 0;
 	}
 	return -1;
@@ -185,8 +186,8 @@ int getOwnerInfo(char *path) {
 	strcpy(owner_gname, grp_s->gr_name);
 
 
-	printf("getOwnerInfo: owner_uname: %s\n", owner_uname);
-	printf("getOwnerInfo: owner_gname: %s\n", owner_gname);
+	// printf("getOwnerInfo: owner_uname: %s\n", owner_uname);
+	// printf("getOwnerInfo: owner_gname: %s\n", owner_gname);
 
 	return 0;
 }
@@ -221,10 +222,10 @@ int authDACPerm(char *path, unsigned int reqd_perm) {
 	}
 
 	if ((reqd_perm & has_perm) >= reqd_perm) {
-		printf("authDACPerm: authenticated\n");
+		// printf("authDACPerm: authenticated\n");
 		return 0;
 	}
-	printf("authDACPerm: could not authenticate. reqd perms %u has perms %u\n", reqd_perm, has_perm);
+	// printf("authDACPerm: could not authenticate. reqd perms %u has perms %u\n", reqd_perm, has_perm);
 	return -1;
 }
 
@@ -257,7 +258,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 		perror("authPerm: error finding owner grp");
 		return -1;
 	}
-	printf("authPerm: uid %u, current user %s, owner %s\n", getuid(), pw->pw_name, owner_uname);
+	// printf("authPerm: uid %u, current user %s, owner %s\n", getuid(), pw->pw_name, owner_uname);
 
 	//referred to man listxattr(2)
 	ssize_t buflen, keylen, vallen;
@@ -268,7 +269,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 		perror("authPerm: listxattr");
 		return -1;
 	} else if (buflen == 0) {
-		printf("authPerm: no acl entries\n");
+		// printf("authPerm: no acl entries\n");
 		return authDACPerm(path, reqd_perm);
 	}
 
@@ -282,9 +283,9 @@ int authPerm(char *path, unsigned int reqd_perm) {
 	unsigned int mask_perm = 7;
 
 	key = buf;
-	printf("\n");
+	// printf("\n");
 	while (buflen > 0) {
-		printf("authPerm: key %s\n", key);
+		// printf("authPerm: key %s\n", key);
 		if(strncmp(key, ACL_ATTRIB_NAME, strlen(ACL_ATTRIB_NAME)) == 0) {
 			vallen = getxattr(path, key, NULL, 0);
 			if(vallen == -1) {
@@ -307,15 +308,15 @@ int authPerm(char *path, unsigned int reqd_perm) {
 			validateAclEntry(aclentry, 1);
 
 			if( strcmp(type, "u") == 0 ) {
-				printf("authPerm: %s %s\n", name, pw->pw_name);
+				// printf("authPerm: %s %s\n", name, pw->pw_name);
 				if( strlen(name) == 0 ) {
-					printf("authPerm: owner entry owner: %s current user: %s\n", owner_uname, pw->pw_name);
+					// printf("authPerm: owner entry owner: %s current user: %s\n", owner_uname, pw->pw_name);
 					if ( strcmp(owner_uname, pw->pw_name)==0 ) {
 						has_perm = has_perm | perm;
 					}
 				}
 				if ( strcmp(name, pw->pw_name)==0 ) {
-					printf("authPerm: named user entry %s\n", name);
+					// printf("authPerm: named user entry %s\n", name);
 					has_perm = has_perm | perm;
 					break;
 				}
@@ -336,7 +337,7 @@ int authPerm(char *path, unsigned int reqd_perm) {
 			} else if ( strcmp(type, "m") == 0 ) {
 				mask_perm = mask_perm & perm;
 			}
-			printf("authPerm: has perms %u from %s\n", has_perm, key);
+			// printf("authPerm: has perms %u from %s\n", has_perm, key);
 		}
 		keylen = strlen(key) +1;
 		buflen -= keylen;
@@ -347,11 +348,11 @@ int authPerm(char *path, unsigned int reqd_perm) {
 	}
 
 	if ((reqd_perm & has_perm) >= reqd_perm) {
-		printf("authPerm: authenticated\n");
+		// printf("authPerm: authenticated\n");
 		return 0;
 	}
 	// printf("%d %d\n", reqd_perm & has_perm, reqd_perm);
-	printf("authPerm: could not authenticate. reqd perms %u has perms %u\n", reqd_perm, has_perm);
+	// printf("authPerm: could not authenticate. reqd perms %u has perms %u\n", reqd_perm, has_perm);
 	return -1;
 
 }
@@ -361,12 +362,12 @@ int authPerm(char *path, unsigned int reqd_perm) {
 int inheritAcl(char *path) {	
 	
 	//inherit acl from parent dir
-	printf("inheritAcl: %s\n", path);
+	// printf("inheritAcl: %s\n", path);
 	char parentDir[ strlen(PATH_HOME) + MAX_PWD_LEN ];
 	strcpy(parentDir, path);
 	*strrchr(parentDir, '/') = 0;
 
-	printf("inheritAcl: parent dir %s\n", parentDir);
+	// printf("inheritAcl: parent dir %s\n", parentDir);
 
 	int status;
 	ssize_t vallen;

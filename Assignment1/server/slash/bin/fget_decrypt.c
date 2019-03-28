@@ -24,6 +24,20 @@ int fget_decrypt(int argc, char **args){
 
 	//authenticated read access
 	printf("fget_decrypt: authenticated for read access %s\n", args[0]);
+	
+	//fverify the HMAC
+	if(fork()==0){
+		char *argsexec[] = {"slash/bin/fverify", args[0], NULL};
+		// printf("fput_encrypt: calling execvp\n");
+		int ret = execvp(argsexec[0], argsexec);
+		if(ret<0){
+			printf("fget_decrypt: HMAC validation failed\n");
+			return -1;
+		}
+	}else{
+		wait(0);
+	}
+
 	getOwnerInfo(args[0]);
 
 	unsigned char *plaintext = malloc(sizeof(unsigned char)*MAX_FILE_LEN);
@@ -39,7 +53,7 @@ int fget_decrypt(int argc, char **args){
 		printf("fget_decrypt: this is not a encrypted file\n");
 		return 0;
 	}
-
+	index = 0;
 	//read the file content till end of file
 	while((c = (unsigned char)fgetc(fp)) != (unsigned char)EOF) {
 		ciphertext[index++] = c;
@@ -53,7 +67,8 @@ int fget_decrypt(int argc, char **args){
 	}	
 	printf("fget_decrypt: success \n\n");
 
-	printf("%s\n", plaintext);
+	printf("%s\n\n", plaintext);
+
 	printf("\n");
 	if (seteuid(getuid())==-1){
 		printf("fget_decrypt: error setting euid\n");

@@ -90,9 +90,14 @@ int fput_encrypt(int argc, unsigned char **args){
 	}
 	putEncryptedContent(args[0], ciphertext, cipherLen);
 
-	//write the HMAC
-	char *argsexec[] = {"slash/bin/fsign", args[0], NULL};
-	execvp(argsexec[0], argsexec);
+	if(fork()==0){
+		//write the HMAC
+		char *argsexec[] = {"slash/bin/fsign", args[0], NULL};
+		// printf("fput_encrypt: calling execvp\n");
+		int ret = execvp(argsexec[0], argsexec);
+	}else{
+		wait(0);
+	}
 
 	if (seteuid(getuid())==-1){
 		printf("fput_encrypt: error setting euid\n");
@@ -132,7 +137,7 @@ int getOldContent(unsigned char *path, unsigned char *oldContent){
 	int index = 0;
 	fp = fopen(path, "r");
 	c = (unsigned char)fgetc(fp);
-	printf("getOldContent: fileType:%c\n", c);
+	// printf("getOldContent: fileType:%c\n", c);
 	if (c=='E') {
 		//this is encrypted content, decrypt it first
 		printf("getOldContent: old content is encrypted\n" );
@@ -141,6 +146,7 @@ int getOldContent(unsigned char *path, unsigned char *oldContent){
 		printf("getOldContent: old content is not encrypted\n" );
 		encrypted = 0;
 	}
+	index = 0;
 	//read the file content till end of file
 	while((c = (unsigned char)fgetc(fp)) != (unsigned char)EOF) {
 		// printf("%c,%d", c,index);
@@ -150,9 +156,9 @@ int getOldContent(unsigned char *path, unsigned char *oldContent){
 
 	// if encrypted, decrypt it first
 	if( encrypted ){
-		printf("getOldContent: decrypting old content, size=%d\n",index);
+		printf("getOldContent: decrypting old content, size=%d\n",oldLen);
 		unsigned char *decryptedContent = malloc(sizeof(unsigned char)*(MAX_FILE_LEN + KEY_LEN_BITS ));
-		int len_decryptedContent = cipher(oldContent, index, decryptedContent, 0, owner_uid);
+		int len_decryptedContent = cipher(oldContent, oldLen, decryptedContent, 0, owner_uid);
 		if(len_decryptedContent<0){
 			printf("getOldContent: error decrypting old content\n");
 			return -1;

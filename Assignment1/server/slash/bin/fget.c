@@ -23,7 +23,20 @@ int fget(int argc, char **args){
 
 	//authenticated read access
 	printf("fget: authenticated for read access %s\n", args[0]);
-
+	
+	//fverify the HMAC
+	if(fork()==0){
+		char *argsexec[] = {"slash/bin/fverify", args[0], NULL};
+		// printf("fput_encrypt: calling execvp\n");
+		int ret = execvp(argsexec[0], argsexec);
+		if(ret<0){
+			printf("fget_decrypt: HMAC validation failed\n");
+			return -1;
+		}
+	}else{
+		wait(0);
+	}
+	
 	//print the file content
 	FILE* filePtr = fopen(args[0], "r");
 	if(filePtr==NULL){
@@ -31,7 +44,7 @@ int fget(int argc, char **args){
 		fclose(filePtr);
 		return -1;
 	}
-
+	getc(filePtr);
 	size_t linelen = MAX_LINE_LEN*sizeof(char);
 	char *line = malloc(linelen);
 	while(getline(&line, &linelen, filePtr)!=-1){  //read until end of file

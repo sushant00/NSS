@@ -14,6 +14,14 @@ sudo passwd fakeroot
 
 sudo usermod -aG sudo fakeroot
 
+// commands to test
+slash/bin/fput_encrypt slash/home/user1/try2.txt 
+slash/bin/fget_decrypt slash/home/user1/try2.txt
+
+
+slash/bin/fget slash/home/user1/try2.txt
+slash/bin/fput slash/home/user1/try2.txt
+
 syscalls:
 getpwuid
 getgrgid

@@ -56,10 +56,14 @@ int fput(int argc, char **args){
 	printf("fput: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 
 	putContent(args[0]);
-
-	//write the HMAC
-	char *argsexec[] = {"slash/bin/fsign", args[0], NULL};
-	execvp(argsexec[0], argsexec);
+	
+	if(fork()==0){
+		//write the HMAC
+		char *argsexec[] = {"slash/bin/fsign", args[0], NULL};
+		execvp(argsexec[0], argsexec);
+	}else{
+		wait(0);
+	}
 
 	if (seteuid(getuid())==-1){
 		printf("fput: error setting euid\n");
