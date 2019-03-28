@@ -64,25 +64,35 @@ int fput_encrypt(int argc, unsigned char **args){
 
 	//authenticated write access
 	printf("fput_encrypt: authenticated for write access %s\n", args[0]);
+	getOwnerInfo(args[0]);
 
 	//write the content after encrypting
 
 	unsigned char *plaintext = malloc(sizeof(unsigned char)*MAX_FILE_LEN);
-	unsigned char *ciphertext = malloc(sizeof(unsigned char)*(MAX_FILE_LEN + strlen(key) ));
+	unsigned char *ciphertext = malloc(sizeof(unsigned char)*(MAX_FILE_LEN + KEY_LEN_BITS ));
 	
 	int oldLen = 0;
 	oldLen = getOldContent(args[0], (unsigned char *)plaintext);
-
+	if(oldLen<0){
+		printf("fput_encrypt: error reading old content\n");
+	}
 	printf("fput_encrypt: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 
-	getNewContent(plaintext + oldLen);
+	int newLen = getNewContent(plaintext + oldLen);
+	if(newLen<0){
+		printf("getNewContent: error getting new content\n");
+	}
 	//encrypt the content
-	int cipherLen = encryptContent(plaintext, ciphertext, 1);
+	int cipherLen = cipher(plaintext, newLen+oldLen, ciphertext, 1, owner_uid);
 	if(cipherLen<0){
 		printf("fput_encrypt: error decrypting old content\n");
 		return -1;
 	}
 	putEncryptedContent(args[0], ciphertext, cipherLen);
+
+	//write the HMAC
+	char *argsexec[] = {"slash/bin/fsign", args[0], NULL};
+	execvp(argsexec[0], argsexec);
 
 	if (seteuid(getuid())==-1){
 		printf("fput_encrypt: error setting euid\n");
@@ -94,15 +104,17 @@ int fput_encrypt(int argc, unsigned char **args){
 
 
 int putEncryptedContent(unsigned char *path, unsigned char *ciphertext, int cipherLen) {
-	// printf("putEncryptedContent: to %s\n", path);
-	FILE* filePtr = fopen(path, "a");
+	printf("putEncryptedContent: writing len=%d, text=%s\n", cipherLen, ciphertext);
+	FILE* filePtr = fopen(path, "w");
 	if(filePtr==NULL) {
 		printf("putEncryptedContent: some error opening %s for append\n", path);
 		return -1;
 	}
 
+	fputc('E', filePtr);
+
 	for(int i=0; i<cipherLen; i++ ){
-		fprintf(filePtr, "%c", ciphertext[i]);
+		fputc(ciphertext[i], filePtr);
 	}
 
 	fclose(filePtr);
@@ -111,39 +123,45 @@ int putEncryptedContent(unsigned char *path, unsigned char *ciphertext, int ciph
 }
 
 int getOldContent(unsigned char *path, unsigned char *oldContent){
+	printf("getOldContent: called\n");
 	int encrypted;
 	int oldLen = 0;
 
 	FILE *fp;
-	int c;
+	unsigned char c;
 	int index = 0;
 	fp = fopen(path, "r");
-	c = fget(fp);
+	c = (unsigned char)fgetc(fp);
+	printf("getOldContent: fileType:%c\n", c);
 	if (c=='E') {
 		//this is encrypted content, decrypt it first
+		printf("getOldContent: old content is encrypted\n" );
 		encrypted = 1;
 	}else{
+		printf("getOldContent: old content is not encrypted\n" );
 		encrypted = 0;
 	}
-
 	//read the file content till end of file
-	while((c = fgetc(fp) != EOF)) {
+	while((c = (unsigned char)fgetc(fp)) != (unsigned char)EOF) {
+		// printf("%c,%d", c,index);
 		oldContent[index++] = c;
 		oldLen+=1;
 	}
 
 	// if encrypted, decrypt it first
 	if( encrypted ){
+		printf("getOldContent: decrypting old content, size=%d\n",index);
 		unsigned char *decryptedContent = malloc(sizeof(unsigned char)*(MAX_FILE_LEN + KEY_LEN_BITS ));
-		int len_decryptedContent = encryptContent(oldContent, decryptedContent, 0);
+		int len_decryptedContent = cipher(oldContent, index, decryptedContent, 0, owner_uid);
 		if(len_decryptedContent<0){
 			printf("getOldContent: error decrypting old content\n");
 			return -1;
 		}
 		oldLen = len_decryptedContent;
 		strncpy(oldContent, decryptedContent, len_decryptedContent);
-		
+		oldContent[len_decryptedContent] = 0;
 	}
+	printf("getOldContent: success. textlen=%d,text=%s\n", oldLen, oldContent);
 	return oldLen;
 }
 
@@ -152,7 +170,9 @@ int getNewContent(unsigned char *newContent) {
 
 	size_t inputlen = MAX_LINE_LEN*sizeof(unsigned char);
 	unsigned char *input = malloc(inputlen);
-				
+	
+	int newLen = 0;
+
 	//take line input
 	while(1){
 		fgets(input, inputlen, stdin);
@@ -165,10 +185,11 @@ int getNewContent(unsigned char *newContent) {
 		}
 		int wrote = sprintf(newContent, "%s\n", input);	
 		newContent = newContent+wrote;
+		newLen+=wrote;
 	}
 
 	printf("getNewContent: finished receiving\n");
-	return 0;
+	return newLen;
 }
 
 int main(int argc, unsigned char **argv){

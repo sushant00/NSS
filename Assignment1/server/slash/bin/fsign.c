@@ -9,12 +9,10 @@
 #include "acl_utils.c"
 #include "enc_utils.c"
 
-int putContent(char *path);
-
-int fsign(int argc, char **args){
+int fsign(int argc, unsigned char **args){
 	printf("fsign: uid:%u euid:%u gid:%u egid:%u \n", getuid(), geteuid(), getgid(), getegid());
 
-	char *ptr = strrchr(args[0], '/');
+	unsigned char *ptr = strrchr(args[0], '/');
 	*ptr = 0;
 
 	if( validatePath(args[0])==-1) {
@@ -24,38 +22,56 @@ int fsign(int argc, char **args){
 
 	*ptr = '/';
 	if ( access(args[0], F_OK) == 0 ) {
-		printf("fsign: %s file already created\n", args[0]);
+		printf("fsign: %s file exists\n", args[0]);
 		//authenticate write access for file, as file is already created
 		if(authPerm(args[0], 2) == -1){
 			printf("fsign: permission denied for file %s\n", args[0]);
 			return -1;
 		}
-	} else {
-		//authenticate write access to directory as we are about to create a file in it
-		*ptr = 0;
-		if(authPerm(args[0], 2) == -1){
-			printf("fsign: permission denied for file %s\n", args[0]);
-			return -1;
-		}
-
-		*ptr = '/';
-
-		//create the file
-		FILE* file = fopen(args[0], "w+");
-		fclose(file);
-		chown(args[0], getuid(), getgid());
-		if ( inheritAcl(args[0])==-1 ){
-			printf("fsign: error inheriting acls from parent for %s\n", args[0]);
-			return -1;
-		}
+	}else{
+		printf("fsign: %s file does not exist. Could not sign\n", args[0]);
+		return 0;
 	}
 
 
 	//authenticated write access
 	printf("fsign: authenticated for write access %s\n", args[0]);
-	printf("fsign: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 
-	putContent(args[0]);
+	unsigned char *content = malloc(sizeof(unsigned char)*(MAX_FILE_LEN + KEY_LEN_BITS ));
+	unsigned char *md = malloc(sizeof(unsigned char)*EVP_MAX_MD_SIZE);
+	
+	getOwnerInfo(args[0]);
+
+	FILE *fp;
+	unsigned char c;
+	int index = 0;
+	fp = fopen(args[0], "r");
+
+	//read the file content till end of file
+	while((c = (unsigned char)fgetc(fp)) != (unsigned char)EOF) {
+		content[index++] = c;
+	}
+
+	int ret = calculateHMAC(content, index+1, md, owner_uid);
+	if(ret<0){
+		printf("fsign: error in HMAC calc\n");
+	}
+
+	fclose(fp);
+
+
+	//write the hmac to file.sign
+	unsigned char *hmacFileName = malloc(MAX_FILENAME_LEN);
+	strcpy(hmacFileName, args[0]);
+	strcpy(hmacFileName+strlen(args[0]), ".sign");
+
+	fp = fopen(hmacFileName, "r");
+
+	for(int i=0; i<ret; i++ ){
+		fputc(md[i], fp);
+	}
+	fclose(fp);
+
 
 	if (seteuid(getuid())==-1){
 		printf("fsign: error setting euid\n");
@@ -65,37 +81,7 @@ int fsign(int argc, char **args){
 	return 0;
 }
 
-
-int putContent(char *path) {
-	// printf("putContent: to %s\n", path);
-	FILE* filePtr = fopen(path, "a");
-	if(filePtr==NULL) {
-		printf("putContent: some error opening %s for append\n", path);
-		return -1;
-	}
-	size_t inputlen = MAX_LINE_LEN*sizeof(char);
-	char *input = malloc(inputlen);
-		
-	//take line input
-	while(1){
-		fgets(input, inputlen, stdin);
-		char *newline = strrchr(input, '\n');
-		*newline = 0;
-
-		//end of file encountered
-		if(strcmp(FILE_END, input) == 0) {
-			break;
-		}
-		fprintf(filePtr, "%s\n", input);	
-	}
-
-	fclose(filePtr);
-	printf("putContent: finished receiving\n");
-	return 0;
-}
-
-
-int main(int argc, char **argv){
+int main(int argc, unsigned char **argv){
 	setbuf(stdout, NULL);
 	return fsign(argc-1, argv+1);
 }

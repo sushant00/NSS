@@ -5,8 +5,12 @@
 #include <string.h>
 #include <errno.h>
 
-#include <openssl/evp.h>
+#include <pwd.h>
 
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+
+#define MAX_SHADOWFILE_LINE_LEN 1024
 #define MAX_FILE_LEN 4096
 #define KEY_LEN_BITS 256
 #define HMAC_ITER 200
@@ -17,7 +21,8 @@
 // unsigned char *getIVUser(int uid);
 int getPassword(int uid, unsigned char *buff);
 int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv);
-int encryptContent(unsigned char *plaintext, unsigned char*ciphertext) ;
+int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid);
+int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid);
 
 int getPassword(int uid, unsigned char *buff) {
 	FILE *fp;	
@@ -35,15 +40,16 @@ int getPassword(int uid, unsigned char *buff) {
 		return -1;
 	}
 
-	size_t linelen = MAX_LINE_LEN*sizeof(unsigned char);
-	unsigned char *line = malloc(linelen);
-	unsigned char * unameEnd, passwdEnd;
-	while(getline(&line, &linelen, filePtr)!=-1){  //read until end of file
-		unameEnd = strchr(line, ":");
+	size_t linelen = MAX_SHADOWFILE_LINE_LEN*sizeof(unsigned char);
+	char *line = malloc(linelen);
+	char *unameEnd;
+	char *passwdEnd;
+	while(getline(&line, &linelen, fp)!=-1){  //read until end of file
+		unameEnd = strchr(line, ':');
 		*unameEnd = 0;
 		if (strcmp(pw_s->pw_name, line) == 0){
 			printf("getPassword: found user match, uname %s\n", line);
-			passwdEnd = strchr(unameEnd+1, ":");
+			passwdEnd = strchr(unameEnd+1, ':');
 			*passwdEnd = 0;
 			strcpy(buff, unameEnd+1);
 			return 0;
@@ -65,14 +71,14 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 	// int pass_len = ;
 
 	printf("getKeyIVUser: called for uid %d\n", uid);
-	int status = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
-	if(!status){
+	int ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
+	if(!ret){
 		perror("getKeyIVUser: error generating key");
 		return -1;
 	}
 
-	int status = PKCS5_PBKDF2_HMAC_SHA1(key, strlen(key), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
-	if(!status){
+	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BITS/sizeof(unsigned char), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
+	if(!ret){
 		perror("getKeyIVUser: error generating iv");
 		return -1;
 	}
@@ -82,36 +88,57 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 }
 
 
-int encryptContent(unsigned char *plaintext, unsigned char *ciphertext, int doEnc) {
-	printf("encryptContent: called doEnc = %d\n", doEnc);
+int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid) {
+	printf("cipher: called doEnc=%d, len_input=%d, input=%s\n", doEnc, len_input, input);
 	unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
-	getKeyUser(getuid(), key, iv);
+	getKeyIVUser(uid, key, iv);
 
-	int len_ciphertext;
+	int len_output = 0;
+	int len;
 
-	ctx = EVP_CIPHER_CTX_new();	
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();	
 	int ret = EVP_CipherInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv, doEnc);
 	if(!ret){
-		printf("encryptContent: error evp cipher init\n");
+		printf("cipher: error evp cipher init\n");
 		return -1;
 	}
 
-	ret = EVP_CipherUpdate(ctx, ciphertext, &len_ciphertext, plaintext, len(plaintext))
+	ret = EVP_CipherUpdate(ctx, output, &len, input, len_input);
 	if(!ret){
-		printf("encryptContent: Cipher update failed\n");
+		printf("cipher: Cipher update failed\n");
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
+	len_output+=len;
 
-	ret = EVP_CipherFinal_ex(ctx, ciphertext, &len_ciphertext);
+	ret = EVP_CipherFinal_ex(ctx, output, &len);
 	if(!ret){		
-		printf("encryptContent: Cipher final failed\n");
+		printf("cipher: Cipher final failed\n");
 		EVP_CIPHER_CTX_free(ctx);
 		return -1;
 	}
-	printf("encryptContent: %d successful\n", doEnc);
+	len_output+=len;
+
+	printf("cipher: %d successful. outputlen=%d, output=%s\n", doEnc, len_output, output);
 
 	EVP_CIPHER_CTX_free(ctx);
-	return len_ciphertext;
+	return len_output;
+}
+
+
+int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid) {
+	printf("calculateHMAC: called\n");
+	unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
+	unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
+	getKeyIVUser(uid, key, iv);
+
+	int len_md = 0;
+	if( HMAC(EVP_sha1(), key, KEY_LEN_BITS, d, len_d, md, &len_md) == 0){
+		perror("calculateHMAC: error");
+		return -1;
+	}
+	printf("calculateHMAC: success. md_len=%d,md=%s\n", len_md, md);
+	return len_md;
+
 }

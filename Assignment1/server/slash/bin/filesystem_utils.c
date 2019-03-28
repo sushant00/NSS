@@ -18,6 +18,7 @@
 
 #define MAX_PWD_LEN 512
 #define MAX_LINE_LEN 1024
+#define MAX_FILENAME_LEN 512
 
 #define ROOT_PID 0
 #define ROOT "fakeroot"

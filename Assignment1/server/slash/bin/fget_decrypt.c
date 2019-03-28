@@ -24,21 +24,36 @@ int fget_decrypt(int argc, char **args){
 
 	//authenticated read access
 	printf("fget_decrypt: authenticated for read access %s\n", args[0]);
+	getOwnerInfo(args[0]);
 
-	//print the file content
-	FILE* filePtr = fopen(args[0], "r");
-	if(filePtr==NULL){
-		printf("fget_decrypt: some error opening %s\n", args[0]);
-		fclose(filePtr);
-		return -1;
-	}
-
-	size_t linelen = MAX_LINE_LEN*sizeof(char);
-	char *line = malloc(linelen);
-	while(getline(&line, &linelen, filePtr)!=-1){  //read until end of file
-		printf("%s", line);	
-	}
+	unsigned char *plaintext = malloc(sizeof(unsigned char)*MAX_FILE_LEN);
+	unsigned char *ciphertext = malloc(sizeof(unsigned char)*(MAX_FILE_LEN + KEY_LEN_BITS ));
 	
+	int encrypted;
+	FILE *fp;
+	unsigned char c;
+	int index = 0;
+	fp = fopen(args[0], "r");
+	c = (unsigned char)fgetc(fp);
+	if(c!='E'){
+		printf("fget_decrypt: this is not a encrypted file\n");
+		return 0;
+	}
+
+	//read the file content till end of file
+	while((c = (unsigned char)fgetc(fp)) != (unsigned char)EOF) {
+		ciphertext[index++] = c;
+	}
+
+	// decrypt it first
+	int len_plaintext = cipher(ciphertext, index, plaintext, 0, owner_uid);
+	if(len_plaintext<0){
+		printf("fget_decrypt: error decrypting content\n");
+		return -1;
+	}	
+	printf("fget_decrypt: success \n\n");
+
+	printf("%s\n", plaintext);
 	printf("\n");
 	if (seteuid(getuid())==-1){
 		printf("fget_decrypt: error setting euid\n");

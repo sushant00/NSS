@@ -41,6 +41,7 @@ int fput(int argc, char **args){
 
 		//create the file
 		FILE* file = fopen(args[0], "w+");
+		fprintf(file, "D");
 		fclose(file);
 		chown(args[0], getuid(), getgid());
 		if ( inheritAcl(args[0])==-1 ){
@@ -55,6 +56,10 @@ int fput(int argc, char **args){
 	printf("fput: enter the content to put. Type '%s' to finish writing.\n", FILE_END);
 
 	putContent(args[0]);
+
+	//write the HMAC
+	char *argsexec[] = {"slash/bin/fsign", args[0], NULL};
+	execvp(argsexec[0], argsexec);
 
 	if (seteuid(getuid())==-1){
 		printf("fput: error setting euid\n");
