@@ -129,7 +129,7 @@ int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc
 
 
 int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid) {
-	printf("calculateHMAC: called for len=%d,d=%s\n", len_d, d);
+	// printf("calculateHMAC: called for len=%d,d=%s\n", len_d, d);
 	unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	getKeyIVUser(uid, key, iv);
@@ -139,7 +139,7 @@ int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid) {
 		perror("calculateHMAC: error");
 		return -1;
 	}
-	printf("calculateHMAC: success. md_len=%d,md=%s\n", len_md, md);
+	// printf("calculateHMAC: success. md_len=%d,md=%s\n", len_md, md);
 	return len_md;
 
 }

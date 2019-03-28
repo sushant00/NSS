@@ -1,7 +1,7 @@
 #!/bin/bash
 
 chown -R fakeroot:fakeroot slash/bin
-chmod -R 766 slash/bin
+chmod -R 777 slash/bin
 chmod -R u+s slash/bin
 
 chown root:root slash

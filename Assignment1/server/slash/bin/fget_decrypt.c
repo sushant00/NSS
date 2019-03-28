@@ -65,6 +65,7 @@ int fget_decrypt(int argc, char **args){
 		printf("fget_decrypt: error decrypting content\n");
 		return -1;
 	}	
+	plaintext[len_plaintext]=0;
 	printf("fget_decrypt: success \n\n");
 
 	printf("%s\n\n", plaintext);

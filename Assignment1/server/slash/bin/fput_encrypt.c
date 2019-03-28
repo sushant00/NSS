@@ -153,7 +153,7 @@ int getOldContent(unsigned char *path, unsigned char *oldContent){
 		oldContent[index++] = c;
 		oldLen+=1;
 	}
-
+	oldContent[index] = 0;
 	// if encrypted, decrypt it first
 	if( encrypted ){
 		printf("getOldContent: decrypting old content, size=%d\n",oldLen);

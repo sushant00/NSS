@@ -22,6 +22,9 @@ slash/bin/fget_decrypt slash/home/user1/try2.txt
 slash/bin/fget slash/home/user1/try2.txt
 slash/bin/fput slash/home/user1/try2.txt
 
+sudo rm ../home/user1/try2.txt.sign
+sudo rm ../home/user1/try2.txt
+
 syscalls:
 getpwuid
 getgrgid
