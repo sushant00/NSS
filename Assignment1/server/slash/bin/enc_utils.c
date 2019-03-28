@@ -8,7 +8,7 @@
 #include <openssl/evp.h>
 
 #define MAX_FILE_LEN 4096
-#define KEY_LEN 256
+#define KEY_LEN_BITS 256
 #define HMAC_ITER 200
 // #define IV_HMAC_ITER 400
 #define PASSWD_FILE "/etc/shadow"
@@ -17,6 +17,7 @@
 // unsigned char *getIVUser(int uid);
 int getPassword(int uid, unsigned char *buff);
 int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv);
+int encryptContent(unsigned char *plaintext, unsigned char*ciphertext) ;
 
 int getPassword(int uid, unsigned char *buff) {
 	FILE *fp;	
@@ -34,9 +35,9 @@ int getPassword(int uid, unsigned char *buff) {
 		return -1;
 	}
 
-	size_t linelen = MAX_LINE_LEN*sizeof(char);
-	char *line = malloc(linelen);
-	char * unameEnd, passwdEnd;
+	size_t linelen = MAX_LINE_LEN*sizeof(unsigned char);
+	unsigned char *line = malloc(linelen);
+	unsigned char * unameEnd, passwdEnd;
 	while(getline(&line, &linelen, filePtr)!=-1){  //read until end of file
 		unameEnd = strchr(line, ":");
 		*unameEnd = 0;
@@ -59,18 +60,18 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 		return -1;
 	}
 
-	// unsigned char *key = malloc(KEY_LEN/32);
-	// unsigned char *iv = malloc(KEY_LEN/32);
+	// unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
+	// unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
 	// int pass_len = ;
 
 	printf("getKeyIVUser: called for uid %d\n", uid);
-	int status = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN, key);
+	int status = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
 	if(!status){
 		perror("getKeyIVUser: error generating key");
 		return -1;
 	}
 
-	int status = PKCS5_PBKDF2_HMAC_SHA1(key, strlen(key), NULL, 0, HMAC_ITER, KEY_LEN, iv);
+	int status = PKCS5_PBKDF2_HMAC_SHA1(key, strlen(key), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
 	if(!status){
 		perror("getKeyIVUser: error generating iv");
 		return -1;
@@ -78,4 +79,39 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 
 	printf("getKeyIVUser: key generated successfully %s\n", key);
 	return 0;
+}
+
+
+int encryptContent(unsigned char *plaintext, unsigned char *ciphertext, int doEnc) {
+	printf("encryptContent: called doEnc = %d\n", doEnc);
+	unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
+	unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
+	getKeyUser(getuid(), key, iv);
+
+	int len_ciphertext;
+
+	ctx = EVP_CIPHER_CTX_new();	
+	int ret = EVP_CipherInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv, doEnc);
+	if(!ret){
+		printf("encryptContent: error evp cipher init\n");
+		return -1;
+	}
+
+	ret = EVP_CipherUpdate(ctx, ciphertext, &len_ciphertext, plaintext, len(plaintext))
+	if(!ret){
+		printf("encryptContent: Cipher update failed\n");
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+
+	ret = EVP_CipherFinal_ex(ctx, ciphertext, &len_ciphertext);
+	if(!ret){		
+		printf("encryptContent: Cipher final failed\n");
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	printf("encryptContent: %d successful\n", doEnc);
+
+	EVP_CIPHER_CTX_free(ctx);
+	return len_ciphertext;
 }
