@@ -2,11 +2,13 @@
 
 all: server client
 	
-server: server_16103.c
-	gcc -o server -pthread server_16103.c -lcrypto
+server: server_16103.c utils.c
+	sudo gcc -o server -pthread server_16103.c -lcrypto
+	sudo chmod u+s server
 	
-client: client_16103.c
-	gcc -o client -pthread client_16103.c -lcrypto
+client: client_16103.c utils.c
+	sudo gcc -o client -pthread client_16103.c -lcrypto
+	sudo chmod u+s client
 
 runclient: client
 	./client

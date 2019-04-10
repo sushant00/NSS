@@ -1,5 +1,5 @@
 //Sushant Kumar Singh
-//2016103
+//201NONCE_LEN103
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,16 +65,21 @@ int main(void){
 	}
 
 	printf("enter your %d digit uid\n", UID_LEN);
-	fgets(msg, UID_LEN, stdin);
+	fgets(msg, UID_LEN+1, stdin);
+	printf("uid client %s\n", msg);
 	int clientUID = atoi(msg);
 	strcpy(msg+UID_LEN, UID_CHAT_SERVER);
-	int nonce = rand()%(900000) + 1000000;
+	printf("uid client, uid server %s\n", msg);
+	int nonce = rand()%(90000) + 100000;
 	sprintf(msg+UID_LEN+UID_LEN, "%d", nonce);
 	printf("msg 1 to kdc:%s", msg);
+	msglen = strlen(msg);
 	sendlen = send_msg(clientSocket, msg, msglen);
 
+	printf("recieving ticket from KDC\n");
 	//receive the ticket
 	recvlen = receive_msg(clientSocket, msg, msglen);
+	printf("received %ld bytes, msg %s\n", recvlen, msg);
 	unsigned char *ciphertext = malloc(sizeof(unsigned char)*recvlen + KEY_LEN_BITS );
 	int cipherLen = cipher(msg, strlen(msg), ciphertext, 0, clientUID);
 
@@ -82,18 +87,18 @@ int main(void){
 	int ticket_len;
 	unsigned char *sharedKey = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
 
-	unsigned char tmp = msg[6];
-	msg[6] = 0;
+	unsigned char tmp = msg[NONCE_LEN];
+	msg[NONCE_LEN] = 0;
 	if(atoi(msg) == nonce){
 		printf("KDC response's nonce match\n");
-		msg[6] = tmp;
-		if(strncmp(msg+6, UID_CHAT_SERVER, UID_LEN)) {
+		msg[NONCE_LEN] = tmp;
+		if(strncmp(msg+NONCE_LEN, UID_CHAT_SERVER, UID_LEN)) {
 			printf("KDC sent shared key for chat server\n");
 
-			strncpy(sharedKey, msg+6+UID_LEN, KEY_LEN_BITS/(sizeof(unsigned char)*8));
-			ticket_len = recvlen - 6 - UID_LEN - (KEY_LEN_BITS/(sizeof(unsigned char)*8));
+			strncpy(sharedKey, msg+NONCE_LEN+UID_LEN, KEY_LEN_BITS/(sizeof(unsigned char)*8));
+			ticket_len = recvlen - NONCE_LEN - UID_LEN - (KEY_LEN_BITS/(sizeof(unsigned char)*8));
 			ticket = malloc( ticket_len );
-			strncpy(ticket, msg+6+UID_LEN+(KEY_LEN_BITS/(sizeof(unsigned char)*8)), ticket_len );
+			strncpy(ticket, msg+NONCE_LEN+UID_LEN+(KEY_LEN_BITS/(sizeof(unsigned char)*8)), ticket_len );
 		}else{
 			printf("KDC sent shared key for unknown client\n");
 			return -1;
@@ -186,7 +191,12 @@ int send_msg(int socket, unsigned char *msg, size_t msglen){
 		close(socket);
 		exit(1);
 	}
-	*strrchr(msg, '\n') = 0;
+	unsigned char *lineEnd = strrchr(msg, '\n');
+	if(lineEnd==NULL){
+		printf("no line end in send_msg\n");
+	}else{
+		*lineEnd = 0;
+	}
 	if(strcmp(EXIT_REQUEST, msg)==0){	//-1 for \n added to msg			
 		printf("closing client\n");
 		close(socket);

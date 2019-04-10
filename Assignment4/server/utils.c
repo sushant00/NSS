@@ -11,8 +11,9 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
-#define UID_LEN 2
-#define UID_CHAT_SERVER "00"
+#define UID_LEN 4
+#define UID_CHAT_SERVER "0000"
+#define NONCE_LEN 6
 
 #define KDC_PORT 5555
 #define SERVER_PORT 12000

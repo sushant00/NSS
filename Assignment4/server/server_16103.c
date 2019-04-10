@@ -218,8 +218,9 @@ int main(void){
 	// 	}
 
 	// }
+	pthread_join(kdc_thread, (void **)(&ret));
 
-	return 0;
+	return ret;
 }
 
 void* listenKDC(void *args){
@@ -272,38 +273,43 @@ void* listenKDC(void *args){
 			close(connectionSocket);
 		}
 		else{
-			*strchr(recvmsg, '\n') = 0;
+			unsigned char *lineEnd = strchr(recvmsg, '\n');
+			if(lineEnd==0){
+				printf("KDC: no line end in recv msg\n");
+			}else{
+
+			*lineEnd = 0;
+			}
 			printf("KDC: received %zd bytes: %s\n", recvlen, recvmsg);
 			unsigned char tmp = recvmsg[UID_LEN];
 			recvmsg[UID_LEN] = 0;
 			uidClient = atoi(recvmsg);
-			sendmsglen += UID_LEN;
 			recvmsg[UID_LEN] = tmp;
 
 			nonceClient = atoi(recvmsg + UID_LEN + UID_LEN);
 		}
 		printf("KDC: uid %d, nonce %d\n", uidClient, nonceClient);
-
+		sendmsglen = 0;
 		getKeyIVUser(0, key, iv);
 		sendmsglen += KEY_LEN_BITS/(sizeof(unsigned char)*8);
 		strncpy(sendmsg, key, sendmsglen);
-		strncpy(sendmsg + KEY_LEN_BITS/(sizeof(unsigned char)*8), recvmsg, UID_LEN);
 		sendmsglen += UID_LEN;
+		strncpy(sendmsg + KEY_LEN_BITS/(sizeof(unsigned char)*8), recvmsg, UID_LEN);
 
 		ciphertext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
-		cipherLen = cipher(sendmsg, (int)sendmsglen, ciphertext, 0, uidClient);
+		cipherLen = cipher(sendmsg, (int)sendmsglen, ciphertext, 1, uidClient);
 
 		sprintf(sendmsg, "%d", nonceClient);
-		sendmsglen = 6;
+		sendmsglen = NONCE_LEN;
 		strncpy(sendmsg + sendmsglen, key, KEY_LEN_BITS/(sizeof(unsigned char)*8));
 		sendmsglen += KEY_LEN_BITS/(sizeof(unsigned char)*8);
 		strcpy(sendmsg + sendmsglen, UID_CHAT_SERVER);
 		sendmsglen += UID_LEN;
 		strncpy(sendmsg + sendmsglen, ciphertext, cipherLen);
-
+		sendmsglen += cipherLen;
 
 		ciphertext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
-		cipherLen = cipher(sendmsg, (int)sendmsglen, ciphertext, 0, uidClient);
+		cipherLen = cipher(sendmsg, (int)sendmsglen, ciphertext, 1, uidClient);
 
 		printf("KDC: sending to client %s\n", ciphertext);
 
@@ -311,6 +317,8 @@ void* listenKDC(void *args){
 		if(sendlen==-1){ //error
 			printf("KDC: [error] sending to socket %d\n", connectionSocket);
 			close(connectionSocket);
+		}else{
+			printf("KDC: sent %ld bytes\n", sendlen);
 		}
 	}
 	return 0;
