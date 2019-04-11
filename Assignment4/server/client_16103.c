@@ -82,7 +82,7 @@ int main(void){
 	recvlen = receive_msg(clientSocketKDC, msg, MSG_LEN);
 	printf("received %ld bytes, msg %s\n", recvlen, msg);
 	unsigned char *plaintext = malloc(sizeof(unsigned char)*recvlen + KEY_LEN_BITS );
-	int plainLen = cipher(msg, strlen(msg), plaintext, 0, clientUID);
+	int plainLen = cipher(msg, strlen(msg), plaintext, 0, clientUID, NULL);
 
 	//-------------------TICKET----------------------------
 	unsigned char *ticket;

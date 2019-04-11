@@ -10,11 +10,11 @@ client: client_16103.c utils.c
 	sudo gcc -o client -pthread client_16103.c -lcrypto
 	sudo chmod u+s client
 
-runclient: client
+runclient: client client_16103.c utils.c
 	./client
 
-runserver: server
+runserver: server server_16103.c utils.c
 	./server
 
 clean:
-	rm server client
+	sudo rm server client

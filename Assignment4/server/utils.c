@@ -32,7 +32,8 @@
 // unsigned char *getIVUser(int uid);
 int getPassword(int uid, unsigned char *buff);
 int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv);
-int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid);
+int getSharedKeyIV(int uid1, int uid2, unsigned char *key, unsigned char *iv);
+int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid, unsigned char *key);
 int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid);
 
 int clientSide = 0; //if this is 1 i.e. client side then don't read the shadow file but ask for password
@@ -78,24 +79,25 @@ int getPassword(int uid, unsigned char *buff) {
 }
 
 int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
-
-	unsigned char *pass = malloc(MAX_PASSWD_LEN);
-	if(getPassword(uid, pass)!=0){
-		printf("getKeyIVUser: error getting passwd\n");
-		return -1;
+	int ret;
+	//if no key specified to use, generate the key from user password
+	if( !(uid<0) ){
+		// printf("getKeyIVUser: generating key for user %d\n", uid);
+		unsigned char *pass = malloc(MAX_PASSWD_LEN);
+		if(getPassword(uid, pass)!=0){
+			printf("getKeyIVUser: error getting passwd\n");
+			return -1;
+		}
+		// printf("getKeyIVUser: using %ld len password: %s\n", strlen(pass), pass);
+		ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
+		// printf("getKeyIVUser: using %ld len password: %s\n", strlen(pass), pass);
+		if(!ret){
+			perror("getKeyIVUser: error generating key");
+			return -1;
+		}
+		// printf("getKeyIVUser: generated key %s\n", key);
 	}
-
-	// unsigned char *key = malloc(KEY_LEN_BITS/sizeof(unsigned char));
-	// unsigned char *iv = malloc(KEY_LEN_BITS/sizeof(unsigned char));
-	// int pass_len = ;
-
-	// printf("getKeyIVUser: called for uid %d\n", uid);
-	int ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
-	if(!ret){
-		perror("getKeyIVUser: error generating key");
-		return -1;
-	}
-
+	//generate iv from key
 	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BITS/(sizeof(unsigned char)*8), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
 	if(!ret){
 		perror("getKeyIVUser: error generating iv");
@@ -107,9 +109,46 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 }
 
 
-int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid) {
+
+int getSharedKeyIV(int uid1, int uid2, unsigned char *key, unsigned char *iv){
+	// printf("getSharedKeyIV: generating shared key for %d %d\n", uid1, uid2);
+	int ret;
+	//if no key specified to use, generate the key from user password
+	if( !(uid1<0 || uid2<0) ){
+		printf("getSharedKeyIV: generating key for users %d and %d \n", uid1, uid2);
+		unsigned char *pass = malloc(MAX_PASSWD_LEN + MAX_PASSWD_LEN);
+		if(getPassword(uid1, pass)!=0){
+			printf("getSharedKeyIV: error getting passwd for user %d\n", uid1);
+			return -1;
+		}
+		if(getPassword(uid2, pass + strlen(pass))!=0){
+			printf("getSharedKeyIV: error getting passwd for user %d\n", uid2);
+			return -1;
+		}
+		// printf("getKeyIVUser: called for uid %d\n", uid);
+		ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
+		if(!ret){
+			perror("getSharedKeyIV: error generating key");
+			return -1;
+		}
+	}
+	//generate iv from key
+	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BITS/(sizeof(unsigned char)*8), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
+	if(!ret){
+		perror("getSharedKeyIV: error generating iv");
+		return -1;
+	}
+
+	// printf("getSharedKeyIV: key generated successfully %s\n", key);
+	return 0;
+}
+
+// if uid is < 0 then use the given key
+int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid, unsigned char *key) {
 	printf("cipher: called doEnc=%d, len_input=%d, input=%s\n", doEnc, len_input, input);
-	unsigned char *key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	if(!(uid<0)){
+		key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	}
 	unsigned char *iv = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
 	getKeyIVUser(uid, key, iv);
 
