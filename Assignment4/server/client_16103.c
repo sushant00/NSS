@@ -151,6 +151,7 @@ int main(void){
 		while(1){
 			fgets(send_buf, msglen, stdin);
 			unsigned char *newline = strchr(send_buf, '\n');
+			// *newline = 0;
 			// send_buf[(int)(newline - msg)] = '\0';
 			if(strlen(send_buf) != 0){
 				break;
@@ -235,5 +236,6 @@ int send_msg(int socket, size_t msglen, int doEnc){
 		close(socket);
 		exit(0);
 	}
+	printf("send_msg: sent %ld bytes\n", sendlen);
 	return sendlen;
 }

@@ -340,6 +340,7 @@ void* handleConnection(void *Args){
 	//get the arguments
 	struct Args *con_args = Args;
 	int connectionSocket = con_args->connectionSocket;
+	printf("handleConnection: connectionSocket %d--------------------------------------------\n", connectionSocket);
 
 	size_t recvmsglen = MSG_LEN*sizeof(unsigned char);
 	unsigned char *recvmsg = malloc(recvmsglen);
@@ -373,12 +374,12 @@ void* handleConnection(void *Args){
 		pthread_exit(NULL);
 	}
 	else{
-		unsigned char *lineEnd = strchr(recvmsg, '\n');
-		if(lineEnd==0){
-			printf("Chat Server: no line end in recv msg\n");
-		}else{
-			*lineEnd = 0;
-		}
+		// unsigned char *lineEnd = strchr(recvmsg, '\n');
+		// if(lineEnd==0){
+		// 	printf("Chat Server: no line end in recv msg\n");
+		// }else{
+		// 	*lineEnd = 0;
+		// }
 		printf("Chat Server: received %zd bytes: %s\n", recvlen, recvmsg);
 		plainLen = cipher(recvmsg, (int)recvlen, plaintext, 0, uidClient, NULL);
 		strncpy(key, plaintext, KEY_LEN_BYTES);
@@ -393,7 +394,7 @@ void* handleConnection(void *Args){
 
 	//authenticate the user
 	int clientInd;
-	if( !(userConnected(uidClient) >= 0) && (clientInd = getEmptySpot() >=0 ) ){
+	if( !(userConnected(uidClient) >= 0) && ((clientInd = getEmptySpot()) >=0 ) ){
 		clientIDs[clientInd] = uidClient;
 		clientSockets[clientInd] = connectionSocket;
 		//allocate memory for sending and receiving
@@ -426,6 +427,7 @@ void* handleConnection(void *Args){
 		recvlen = recv_msg(clientInd, recvmsglen, 1);
 
 		if (recvlen <= 0){
+			printf("Chat Server: removing client %s\n", getUserName(clientIDs[clientInd]));
 			free(tokens);
 			pthread_exit(NULL);
 		}
@@ -623,10 +625,12 @@ int send_msg(int clientInd, size_t msg_len){
 }
 
 int who(unsigned char **args, int clientInd){
+	printf("who: num clients %d\n", numClients);
 	printf("who: client %s called\n", getUserName(clientIDs[clientInd]));
 	for(int i=0; i<MAX_CLIENTS; i++){
+		// printf("check %d\n", clientIDs[i]);
 		if(clientIDs[i] != EMPTY_CLIENT_MARK) {
-			sprintf(clientSendBuf[clientInd], "%-13s  %-4d\n", getUserName(clientIDs[clientInd]), clientIDs[clientInd]);
+			sprintf(clientSendBuf[clientInd], "%-13s  %-4d\n", getUserName(clientIDs[i]), clientIDs[i]);
 			// printf("who: %ld\n", strlen(clientSendBuf[clientInd]));
 			if(send_msg(clientInd, 20)<0){
 				return -1;
@@ -638,8 +642,16 @@ int who(unsigned char **args, int clientInd){
 }
 
 int write_all(unsigned char **args, int clientInd){
-
-	// clientKeyBuf[]
+	printf("write_all: client %s called\n", getUserName(clientIDs[clientInd]));
+	for(int i=0; i<MAX_CLIENTS; i++){
+		if((clientIDs[i] != EMPTY_CLIENT_MARK) && (i!=clientInd)) {
+			sprintf(clientSendBuf[i], "%s\n", args[0]);
+			if(send_msg(i, strlen(clientSendBuf[i]))<0){
+				return -1;
+			}
+		}
+	}
+	printf("write_all: done\n");
 	return 0;
 }
 
