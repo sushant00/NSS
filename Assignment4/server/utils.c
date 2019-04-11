@@ -24,6 +24,7 @@
 #define MAX_SHADOWFILE_LINE_LEN 1024
 #define MAX_FILE_LEN 4096
 #define KEY_LEN_BITS 256
+#define KEY_LEN_BYTES 32
 #define HMAC_ITER 200
 // #define IV_HMAC_ITER 400
 #define PASSWD_FILE "/etc/shadow"
@@ -89,7 +90,7 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 			return -1;
 		}
 		// printf("getKeyIVUser: using %ld len password: %s\n", strlen(pass), pass);
-		ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BITS, key);
+		ret = PKCS5_PBKDF2_HMAC_SHA1(pass, strlen(pass), NULL, 0, HMAC_ITER, KEY_LEN_BYTES, key);
 		// printf("getKeyIVUser: using %ld len password: %s\n", strlen(pass), pass);
 		if(!ret){
 			perror("getKeyIVUser: error generating key");
@@ -97,8 +98,9 @@ int getKeyIVUser(int uid, unsigned char *key, unsigned char *iv){
 		}
 		// printf("getKeyIVUser: generated key %s\n", key);
 	}
+	// printf("getKeyIVUser: generating iv, using %ld len key %s\n", strlen(key), key);
 	//generate iv from key
-	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BITS/(sizeof(unsigned char)*8), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
+	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BYTES, NULL, 0, HMAC_ITER, KEY_LEN_BYTES, iv);
 	if(!ret){
 		perror("getKeyIVUser: error generating iv");
 		return -1;
@@ -133,7 +135,7 @@ int getSharedKeyIV(int uid1, int uid2, unsigned char *key, unsigned char *iv){
 		}
 	}
 	//generate iv from key
-	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BITS/(sizeof(unsigned char)*8), NULL, 0, HMAC_ITER, KEY_LEN_BITS, iv);
+	ret = PKCS5_PBKDF2_HMAC_SHA1(key, KEY_LEN_BYTES, NULL, 0, HMAC_ITER, KEY_LEN_BYTES, iv);
 	if(!ret){
 		perror("getSharedKeyIV: error generating iv");
 		return -1;
@@ -147,9 +149,9 @@ int getSharedKeyIV(int uid1, int uid2, unsigned char *key, unsigned char *iv){
 int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid, unsigned char *key) {
 	printf("cipher: called doEnc=%d, len_input=%d, input=%s\n", doEnc, len_input, input);
 	if(!(uid<0)){
-		key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+		key = malloc(KEY_LEN_BYTES);
 	}
-	unsigned char *iv = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	unsigned char *iv = malloc(KEY_LEN_BYTES);
 	getKeyIVUser(uid, key, iv);
 
 	int len_output = 0;
@@ -177,17 +179,19 @@ int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc
 		return -1;
 	}
 	len_output+=len;
-
+	if(!doEnc) {
+		output[len_output] = 0;
+		printf("cipher: added null at the end\n");
+	}
 	printf("cipher: %d successful. outputlen=%d, output=%s\n", doEnc, len_output, output);
-
 	EVP_CIPHER_CTX_free(ctx);
 	return len_output;
 }
 
 int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid) {
 	// printf("calculateHMAC: called for len=%d,d=%s\n", len_d, d);
-	unsigned char *key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
-	unsigned char *iv = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	unsigned char *key = malloc(KEY_LEN_BYTES);
+	unsigned char *iv = malloc(KEY_LEN_BYTES);
 	getKeyIVUser(uid, key, iv);
 
 	int len_md = 0;

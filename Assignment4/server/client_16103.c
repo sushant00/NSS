@@ -15,8 +15,15 @@
 #include "utils.c"
 
 void* receiver(void *args);
-int send_msg(int socket, unsigned char *msg, size_t msglen);
-int receive_msg(int socket, unsigned char *msg, size_t msglen);
+int send_msg(int socket, size_t msglen, int doEnc);
+int recv_msg(int socket, size_t msglen, int decrypt);
+
+unsigned char sharedKey[KEY_LEN_BYTES];
+unsigned char recv_buf[MSG_LEN];
+unsigned char send_buf[MSG_LEN];
+unsigned char cipher_buf[MSG_LEN];
+unsigned char plain_buf[MSG_LEN];
+
 
 // CLIENT
 int main(void){
@@ -66,28 +73,27 @@ int main(void){
 	}
 
 	printf("enter your %d digit uid\n", UID_LEN);
-	fgets(msg, UID_LEN+1, stdin);
-	printf("uid client %s\n", msg);
-	int clientUID = atoi(msg);
-	strcpy(msg+UID_LEN, UID_CHAT_SERVER);
-	printf("uid client, uid server %s\n", msg);
+	fgets(send_buf, UID_LEN+1, stdin);
+	printf("uid client %s\n", send_buf);
+	int clientUID = atoi(send_buf);
+	strcpy(send_buf + UID_LEN, UID_CHAT_SERVER);
+	printf("uid client, uid server %s\n", send_buf);
 	int nonce = rand()%(90000) + 100000;
-	sprintf(msg+UID_LEN+UID_LEN, "%d", nonce);
-	printf("msg 1 to kdc:%s", msg);
-	msglen = strlen(msg);
-	sendlen = send_msg(clientSocketKDC, msg, msglen);
+	sprintf(send_buf+UID_LEN+UID_LEN, "%d", nonce);
+	printf("msg 1 to kdc:%s", send_buf);
+	msglen = strlen(send_buf);
+	sendlen = send_msg(clientSocketKDC, msglen, 0);
 
 	printf("recieving ticket from KDC\n");
 	//receive the ticket
-	recvlen = receive_msg(clientSocketKDC, msg, MSG_LEN);
-	printf("received %ld bytes, msg %s\n", recvlen, msg);
+	recvlen = recv_msg(clientSocketKDC, MSG_LEN, 0);
+	printf("received %ld bytes, msg %s\n", recvlen, recv_buf);
 	unsigned char *plaintext = malloc(sizeof(unsigned char)*recvlen + KEY_LEN_BITS );
-	int plainLen = cipher(msg, strlen(msg), plaintext, 0, clientUID, NULL);
+	int plainLen = cipher(recv_buf, recvlen, plaintext, 0, clientUID, NULL);
 
 	//-------------------TICKET----------------------------
 	unsigned char *ticket;
 	int ticket_len;
-	unsigned char *sharedKey = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
 
 	unsigned char tmp = plaintext[NONCE_LEN];
 	plaintext[NONCE_LEN] = 0;
@@ -95,13 +101,13 @@ int main(void){
 	if(atoi(plaintext) == nonce){
 		printf("KDC response's nonce match success!\n");
 		plaintext[NONCE_LEN] = tmp;
-		if(strncmp(plaintext+NONCE_LEN, UID_CHAT_SERVER, UID_LEN)) {
+		if(strncmp(plaintext+NONCE_LEN + KEY_LEN_BYTES, UID_CHAT_SERVER, UID_LEN)==0) {
 			printf("KDC sent shared key for chat server\n");
 
-			strncpy(sharedKey, plaintext+NONCE_LEN+UID_LEN, KEY_LEN_BITS/(sizeof(unsigned char)*8));
-			ticket_len = plainLen - NONCE_LEN - UID_LEN - (KEY_LEN_BITS/(sizeof(unsigned char)*8));
+			strncpy(sharedKey, plaintext+NONCE_LEN, KEY_LEN_BYTES);
+			ticket_len = plainLen - NONCE_LEN - UID_LEN - (KEY_LEN_BYTES);
 			ticket = malloc( ticket_len );
-			strncpy(ticket, plaintext+NONCE_LEN+UID_LEN+(KEY_LEN_BITS/(sizeof(unsigned char)*8)), ticket_len );
+			strncpy(ticket, plaintext+NONCE_LEN+UID_LEN+(KEY_LEN_BYTES), ticket_len );
 			printf("ticket len %d received from KDC: %s\n", ticket_len, ticket);
 		}else{
 			printf("KDC sent shared key for unknown client\n");
@@ -128,10 +134,10 @@ int main(void){
 		exit(1);
 	}
 
-	strncpy(msg, ticket, ticket_len);
+	strncpy(send_buf, ticket, ticket_len);
 	msglen = ticket_len;
-	sendlen = send_msg(clientSocket, msg, msglen);
-	printf("sent sendlen %ld, msglen %ld\n", sendlen, msglen);
+	sendlen = send_msg(clientSocket, msglen, 0);
+	// printf("sent sendlen %ld, msglen %ld\n", sendlen, msglen);
 
 	printf("client connected to server.\nType msg (max %d chars) and press enter. Type '%s' to close the client.\n", COMMAND_LEN, EXIT_REQUEST);
 
@@ -143,14 +149,14 @@ int main(void){
 	while(1){		
 		//take msg line input
 		while(1){
-			fgets(msg, msglen, stdin);
-			unsigned char *newline = strchr(msg, '\n');
-			// msg[(int)(newline - msg)] = '\0';
-			if(strlen(msg) != 0){
+			fgets(send_buf, msglen, stdin);
+			unsigned char *newline = strchr(send_buf, '\n');
+			// send_buf[(int)(newline - msg)] = '\0';
+			if(strlen(send_buf) != 0){
 				break;
 			}
 		}
-		sendlen = send_msg(clientSocket, msg, msglen);
+		sendlen = send_msg(clientSocket, msglen, 1);
 	}
 	close(clientSocket);
 	return 0;
@@ -159,17 +165,17 @@ int main(void){
 //receiver for a client
 void* receiver(void *args){
 	int clientSocket = *((int *)args);
-	size_t msglen = MSG_LEN*sizeof(unsigned char);
-	unsigned char *msg = malloc(msglen);
+	size_t msglen;
 	size_t recvlen;
 	while(1){
 		//receive the msg
-		recvlen = receive_msg(clientSocket, msg, msglen);
+		msglen = MSG_LEN;
+		recvlen = recv_msg(clientSocket, msglen, 1);
 	}
 }
 
-int receive_msg(int socket, unsigned char *msg, size_t msglen){
-	size_t recvlen = recv(socket, (void *)msg, msglen, 0);
+int recv_msg(int socket, size_t msglen, int decrypt){
+	size_t recvlen = recv(socket, (void *)recv_buf, msglen, 0);
 	printf("recvlen: %ld, msglen %ld\n", recvlen, msglen);
 	if(recvlen==-1){ //error
 		printf("error receiving\n");
@@ -179,33 +185,52 @@ int receive_msg(int socket, unsigned char *msg, size_t msglen){
 		close(socket);
 		exit(0);	
 
-	}else{
-		if(strcmp(EXIT_REQUEST, msg)==0){				
+	}
+
+	if(decrypt){
+		printf("recv_msg: using shared key %s\n", sharedKey);
+		int plainLen = cipher(recv_buf, recvlen, plain_buf, 0, -1, sharedKey);
+
+		if(strcmp(EXIT_REQUEST, plain_buf)==0){				
 			printf("server disconnecting\n");
 			close(socket);
 			exit(0);
 		}
-		printf("%s", msg);
+		printf("%s", plain_buf);
+		return plainLen;
+	}else{
+
+		if(strcmp(EXIT_REQUEST, recv_buf)==0){				
+			printf("server disconnecting\n");
+			close(socket);
+			exit(0);
+		}
+		printf("%s", recv_buf);
+		return recvlen;
 	}
-	return recvlen;
 }
 
 
 
-int send_msg(int socket, unsigned char *msg, size_t msglen){
-	size_t sendlen = send(socket, (void *)msg, msglen, MSG_NOSIGNAL);
+int send_msg(int socket, size_t msglen, int doEnc){
+	if(doEnc){
+		int cipherLen = cipher(send_buf, msglen, cipher_buf, 1, -1, sharedKey);
+		strncpy(send_buf, cipher_buf, cipherLen);
+		msglen = cipherLen;
+	}
+	size_t sendlen = send(socket, (void *)send_buf, msglen, MSG_NOSIGNAL);
 	if(sendlen==-1){ //error
 		printf("error sending\n");			
 		close(socket);
 		exit(1);
 	}
-	unsigned char *lineEnd = strrchr(msg, '\n');
+	unsigned char *lineEnd = strrchr(send_buf, '\n');
 	if(lineEnd==NULL){
 		printf("no line end in send_msg\n");
 	}else{
 		*lineEnd = 0;
 	}
-	if(strcmp(EXIT_REQUEST, msg)==0){	//-1 for \n added to msg			
+	if(strcmp(EXIT_REQUEST, send_buf)==0){	//-1 for \n added to msg			
 		printf("closing client\n");
 		close(socket);
 		exit(0);

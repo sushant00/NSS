@@ -38,15 +38,24 @@ Now the user is presented with a shell. Supported commands are mentioned below.
 
 Commands Supported
 ==================
-cd
---
+who
+---
 
 .. code:: shell
 
-  cd [dir]
+  who
   
-This helps the user to change the current working directory. A user can change directory to any existing directory dir. dir can be absolute or relative path.
+Shows name and uid of logged in users. Groups are not shown.
 
+
+write_all
+---------
+
+.. code:: shell
+
+  write_all <msg>
+  
+Broadcasts msg to everyone, including the sender. The broadcasting is encrypted using the established shared key
 
 
 Project Dir Structure
@@ -78,11 +87,13 @@ Assumptions
 ============
 
 - The IP address and port number of KDC, server is fixed
-- the clients need to know and enter their 2 digit userid
+- the clients need to know and enter their 4 digit userid
 - a 6 digit nonce is generated automatically and added to the msg
 - 00 uid is reserved for chat server
 - the files listed or shared should be in users home directory only
-
+- the iv is generated from the key
+- max password length for a user is 512 characters
+- client currently reads the password from shadow file, may be changed to enter the password
 
 Bugs defended / Extra Features
 ==============================

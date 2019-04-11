@@ -73,6 +73,7 @@ int initVars(void);
 int userConnected(int userID);
 int getEmptySpot(void);
 int send_msg(int clientInd, size_t msg_len);
+int recv_msg(int clientInd, size_t msg_len, int decrypt);
 
 unsigned char **parseCommand(unsigned char *command, unsigned char **tokens);
 int exec_internal(unsigned char **args, int clientInd);
@@ -90,6 +91,7 @@ unsigned char *clientSendBuf[MAX_CLIENTS];
 unsigned char *clientRecvBuf[MAX_CLIENTS];
 unsigned char *clientKeyBuf[MAX_CLIENTS];
 unsigned char *clientCipherBuf[MAX_CLIENTS];
+unsigned char *clientPlainBuf[MAX_CLIENTS];
 
 sem_t w_mutex;					//threads acquire lock before modifying clientSockets, numClients;
 int readCount = 0;				//read count for clients reading clientSockets
@@ -208,6 +210,7 @@ int main(void){
 			sprintf(sendmsg, "server: Too many conncetions. Try later.\n");
 			int sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 			close(connectionSocket);
+			free(sendmsg);
 		}else{
 
 			// increase number of clients and save the connectionSocket;
@@ -252,8 +255,8 @@ void* listenKDC(void *args){
 	int cipherLen;
 	unsigned char *ciphertext;
 
-	unsigned char *key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
-	unsigned char *iv = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	unsigned char *key = malloc(KEY_LEN_BYTES);
+	unsigned char *iv = malloc(KEY_LEN_BYTES);
 
 	//wait for clients
 	while(1){
@@ -295,10 +298,10 @@ void* listenKDC(void *args){
 		printf("KDC: uid %d, nonce %d\n", uidClient, nonceClient);
 		sendmsglen = 0;
 		getSharedKeyIV(atoi(UID_CHAT_SERVER), uidClient, key, iv);
-		sendmsglen += KEY_LEN_BITS/(sizeof(unsigned char)*8);
+		sendmsglen += KEY_LEN_BYTES;
 		strncpy(sendmsg, key, sendmsglen);
 		sendmsglen += UID_LEN;
-		strncpy(sendmsg + KEY_LEN_BITS/(sizeof(unsigned char)*8), recvmsg, UID_LEN);
+		strncpy(sendmsg + KEY_LEN_BYTES, recvmsg, UID_LEN);
 
 		// A is client, B is chat server, S is KDC. Encrypt Kab, A with Kbs
 		ciphertext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
@@ -306,8 +309,8 @@ void* listenKDC(void *args){
 
 		sprintf(sendmsg, "%d", nonceClient);
 		sendmsglen = NONCE_LEN;
-		strncpy(sendmsg + sendmsglen, key, KEY_LEN_BITS/(sizeof(unsigned char)*8));
-		sendmsglen += KEY_LEN_BITS/(sizeof(unsigned char)*8);
+		strncpy(sendmsg + sendmsglen, key, KEY_LEN_BYTES);
+		sendmsglen += KEY_LEN_BYTES;
 		strcpy(sendmsg + sendmsglen, UID_CHAT_SERVER);
 		sendmsglen += UID_LEN;
 		strncpy(sendmsg + sendmsglen, ciphertext, cipherLen);
@@ -346,7 +349,7 @@ void* handleConnection(void *Args){
 	unsigned char *sendmsg = malloc(sendmsglen);
 	size_t sendlen;
 
-	unsigned char *key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	unsigned char *key = malloc(KEY_LEN_BYTES);
 	unsigned char *plaintext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
 	int plainLen;
 	int uidClient;
@@ -378,8 +381,8 @@ void* handleConnection(void *Args){
 		}
 		printf("Chat Server: received %zd bytes: %s\n", recvlen, recvmsg);
 		plainLen = cipher(recvmsg, (int)recvlen, plaintext, 0, uidClient, NULL);
-		strncpy(key, plaintext, KEY_LEN_BITS/(sizeof(unsigned char)*8));
-		uidClient = atoi(plaintext + KEY_LEN_BITS/(sizeof(unsigned char)*8));
+		strncpy(key, plaintext, KEY_LEN_BYTES);
+		uidClient = atoi(plaintext + KEY_LEN_BYTES);
 
 		printf("Chat Server: uidClient %d, shared key %s\n", uidClient, key);
 	}
@@ -396,7 +399,8 @@ void* handleConnection(void *Args){
 		//allocate memory for sending and receiving
 		clientSendBuf[clientInd] = malloc(MSG_LEN*sizeof(char));
 		clientRecvBuf[clientInd] = malloc(MSG_LEN*sizeof(char));
-		clientCipherBuf[clientInd] = malloc(MSG_LEN*sizeof(char));
+		clientCipherBuf[clientInd] = malloc((MSG_LEN + KEY_LEN_BITS)*sizeof(char));
+		clientPlainBuf[clientInd] = malloc((MSG_LEN + KEY_LEN_BITS)*sizeof(char));
 		clientKeyBuf[clientInd] = key;
 					
 	}else{
@@ -419,54 +423,39 @@ void* handleConnection(void *Args){
 
 	while(1){
 		//receive the msg
-		recvlen = recv(connectionSocket, (void *)recvmsg, recvmsglen, 0);
+		recvlen = recv_msg(clientInd, recvmsglen, 1);
 
 		if (recvlen <= 0){
-			if(recvlen==-1){ //error
-				printf("error receiving from %s\n", getUserName(clientIDs[clientInd]));
-			}else if(recvlen==0){
-				printf("client %s disconnected abruptly\n", getUserName(clientIDs[clientInd]));
-			}
-			
-			//takeaway client's ID and close socket
-			clientIDs[clientInd] = EMPTY_CLIENT_MARK;
-			close(clientSockets[clientInd]);
-			numClients--;
-			free(sendmsg);
-			free(recvmsg);
 			free(tokens);
 			pthread_exit(NULL);
 		}
 		else{
-			*strchr(recvmsg, '\n') = 0;
-			printf("received %zd bytes from client %s: %s\n", recvlen, getUserName(clientIDs[clientInd]), recvmsg);
-	
-			if(recvmsg[0] == 0) {
+			*strchr(clientPlainBuf[clientInd], '\n') = 0;	
+			if(clientPlainBuf[clientInd][0] == 0) {
 				printf("blank msg received\n");
 			}else{
-				args = parseCommand(recvmsg, tokens);
+				args = parseCommand(clientPlainBuf[clientInd], tokens);
 				// printf("parsed the command\n");
 
 				//check and execute if internal command
 				if (exec_internal(args, clientInd)==-1) {
 					//informing client
-					sprintf(sendmsg, "[error] %s is not valid command\n", args[0]);
-					sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+					sendmsglen = sprintf(clientSendBuf[clientInd], "[error] %s is not valid command\n", args[0]);
+					sendlen = send_msg(clientInd, sendmsglen);
 					if(sendlen==-1){ //error
 						printf("[error] sending to socket %d\n", connectionSocket);
 					}
 				}
 			}
-			sprintf(sendmsg, "%s@server$ ", getUserName(clientIDs[clientInd]));
-			sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+			sendmsglen = sprintf(clientSendBuf[clientInd], "%s@server$ ", getUserName(clientIDs[clientInd]));
+			sendlen = send_msg(clientInd, sendmsglen);
 			if(sendlen==-1){ //error
 				printf("[error] sending to socket %d\n", connectionSocket);
 			}
 		}
 	}
-	free(sendmsg);
-	free(recvmsg);
 	free(tokens);
+	pthread_exit(NULL);
 }
 
 
@@ -504,7 +493,6 @@ int initVars(void) {
 	}
 }
 
-
 //exitrequest listener
 void* informExit(void *args){
 	int serverSocket = *(int *)args;
@@ -537,6 +525,7 @@ void* informExit(void *args){
 			printf("%d\n", close(serverSocket));
 			exit(0);	
 		}
+		free(command);
 	}
 }
 
@@ -563,6 +552,7 @@ int exec_internal(unsigned char **args, int clientInd) {
 	for(int i=0; i<NUM_COMMANDS; i++){
 		if(strcmp(command, COMMAND_NAMES[i])==0){
 			COMMAND_FUNCS[i](args+1, clientInd);
+			return 0;
 		}
 	}
 	printf("command %s not recognized\n", command);
@@ -582,7 +572,7 @@ unsigned char *getUserName(int uid){
 
 
 int exitShell(unsigned char **args, int clientInd) {
-	printf("client %s disconnected\n", getUserName(clientIDs[clientInd]));
+	printf("exitShell: client %s disconnected\n", getUserName(clientIDs[clientInd]));
 	//takeaway client's ID and close socket
 	clientIDs[clientInd] = EMPTY_CLIENT_MARK;
 	close(clientSockets[clientInd]);
@@ -591,14 +581,37 @@ int exitShell(unsigned char **args, int clientInd) {
 	return 0;
 }
 
+//receive msg and decrypt
+int recv_msg(int clientInd, size_t recvmsglen, int decrypt){
+	int recvlen = recv(clientSockets[clientInd], clientRecvBuf[clientInd], recvmsglen, 0);
+	if (recvlen <= 0){
+		if(recvlen==-1){ //error
+			printf("recv_msg: error receiving from %s\n", getUserName(clientIDs[clientInd]));
+		}else if(recvlen==0){
+			printf("recv_msg: client %s disconnected abruptly\n", getUserName(clientIDs[clientInd]));
+		}
+		
+		//takeaway client's ID and close socket
+		clientIDs[clientInd] = EMPTY_CLIENT_MARK;
+		close(clientSockets[clientInd]);
+		numClients--;
+		return -1;
+	}
+	if(decrypt){
+		int plainLen = cipher(clientRecvBuf[clientInd], (int)recvlen, clientPlainBuf[clientInd], 0, -1, clientKeyBuf[clientInd]);
+		return plainLen;
+	}
+	return recvlen;
+}
+
 //encrypt the message and send
 int send_msg(int clientInd, size_t msg_len){
-	printf("send_msg: to %s\n", getUserName(clientIDs[clientInd]));
+	printf("send_msg: %s to %s\n", clientSendBuf[clientInd], getUserName(clientIDs[clientInd]));
 	int cipherLen = cipher(clientSendBuf[clientInd], (int)msg_len, clientCipherBuf[clientInd],
 		1, -1, clientKeyBuf[clientInd]);
 
 	strncpy(clientSendBuf[clientInd], clientCipherBuf[clientInd], cipherLen);
-	size_t sendlen = send(clientSockets[clientInd], (void *)clientSendBuf[clientInd], msg_len, MSG_NOSIGNAL);
+	size_t sendlen = send(clientSockets[clientInd], (void *)clientSendBuf[clientInd], cipherLen, MSG_NOSIGNAL);
 
 	if(sendlen==-1){ //error
 		printf("error sending to socket %d\n", clientSockets[clientInd]);
@@ -613,12 +626,14 @@ int who(unsigned char **args, int clientInd){
 	printf("who: client %s called\n", getUserName(clientIDs[clientInd]));
 	for(int i=0; i<MAX_CLIENTS; i++){
 		if(clientIDs[i] != EMPTY_CLIENT_MARK) {
-			sprintf(clientSendBuf[clientInd], "%-14s  %-4d\n", getUserName(clientIDs[clientInd]), clientIDs[clientInd]);
+			sprintf(clientSendBuf[clientInd], "%-13s  %-4d\n", getUserName(clientIDs[clientInd]), clientIDs[clientInd]);
+			// printf("who: %ld\n", strlen(clientSendBuf[clientInd]));
 			if(send_msg(clientInd, 20)<0){
 				return -1;
 			}
 		}
 	}
+	printf("who: done\n");
 	return 0;
 }
 
