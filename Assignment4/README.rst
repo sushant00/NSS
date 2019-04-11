@@ -78,6 +78,10 @@ Assumptions
 ============
 
 - The IP address and port number of KDC, server is fixed
+- the clients need to know and enter their 2 digit userid
+- a 6 digit nonce is generated automatically and added to the msg
+- 00 uid is reserved for chat server
+- the files listed or shared should be in users home directory only
 
 
 Bugs defended / Extra Features
@@ -89,7 +93,7 @@ Bugs defended / Extra Features
 - users entering wrong credential are not allowed to connect
 - only limited number of users can connect at a time
 - server can inform its exit to client
-
+- client checks the nonce recieved, and userid of chat server as in NS protocol
 
 
 Developed by Sushant Kumar Singh

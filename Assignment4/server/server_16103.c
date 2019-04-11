@@ -70,6 +70,7 @@ void* informExit(void *args);
 void* listenKDC(void *args);
 
 int initVars(void);
+int userConnected(int userID);
 int getEmptySpot(void);
 
 unsigned char **parseCommand(unsigned char *command, unsigned char **tokens);
@@ -86,6 +87,7 @@ int clientSockets[MAX_CLIENTS];
 int clientIDs[MAX_CLIENTS];
 unsigned char *clientSendBuf[MAX_CLIENTS];
 unsigned char *clientRecvBuf[MAX_CLIENTS];
+unsigned char *clientKeyBuf[MAX_CLIENTS];
 
 sem_t w_mutex;					//threads acquire lock before modifying clientSockets, numClients;
 int readCount = 0;				//read count for clients reading clientSockets
@@ -149,11 +151,11 @@ int main(void){
 	len = sizeof(local_addr);
 	ret = bind(kdcSocket, (struct sockaddr *)&local_addr, (socklen_t)len);
 	if(ret==-1){	//error
-		fprintf(stderr, "could not bind KDC\n");
+		fprintf(stderr, "KDC: could not bind KDC\n");
 		exit(1);
 	}
 
-	printf("KDC ready\n");
+	printf("KDC: ready\n");
 
 	//IPv4 address SERVER
 	local_addr.sin_family = AF_INET;
@@ -163,61 +165,61 @@ int main(void){
 	len = sizeof(local_addr);
 	ret = bind(serverSocket, (struct sockaddr *)&local_addr, (socklen_t)len);
 	if(ret==-1){	//error
-		fprintf(stderr, "could not bind\n");
+		fprintf(stderr, "KDC: could not bind\n");
 		exit(1);
 	}
 
-	printf("server ready\n");
+	printf("Chat Server: ready\n");
 
 	pthread_t kdc_thread;
 	pthread_create(&kdc_thread, NULL, listenKDC, (void *)&kdcSocket);
 
-	// ret = listen(serverSocket, MAX_CLIENTS);//ignore if too many clients waiting
-	// if(ret==-1){	//error
-	// 	fprintf(stderr, "could not listen\n");
-	// 	exit(1);
-	// }
+	ret = listen(serverSocket, MAX_CLIENTS);//ignore if too many clients waiting
+	if(ret==-1){	//error
+		fprintf(stderr, "Chat Server: could not listen\n");
+		exit(1);
+	}
 
-	// printf("listening...Type %s to close the server anytime\n", EXIT_REQUEST);
+	printf("Chat Server: listening...Type %s to close the server anytime\n", EXIT_REQUEST);
 
-	// //handles the exit request from server
-	// pthread_t exit_thread;
-	// pthread_create(&exit_thread, NULL, informExit, (void *)&serverSocket);
+	//handles the exit request from server
+	pthread_t exit_thread;
+	pthread_create(&exit_thread, NULL, informExit, (void *)&serverSocket);
 
 
-	// //wait for clients
-	// while(1){
-	// 	struct sockaddr_in connection_addr;
-	// 	len = sizeof(connection_addr);
-	// 	int connectionSocket = accept(serverSocket, (struct sockaddr *)&connection_addr, (socklen_t *)&len);
-	// 	if(connectionSocket==-1){	//error
-	// 		fprintf(stderr, "[error] could not accept connection\n");
-	// 		exit(1);
-	// 	}
-	// 	printf("new connection incoming\n");
+	//wait for clients
+	while(1){
+		struct sockaddr_in connection_addr;
+		len = sizeof(connection_addr);
+		int connectionSocket = accept(serverSocket, (struct sockaddr *)&connection_addr, (socklen_t *)&len);
+		if(connectionSocket==-1){	//error
+			fprintf(stderr, "[error] could not accept connection\n");
+			exit(1);
+		}
+		printf("new connection incoming\n");
 
-	// 	if(numClients==MAX_CLIENTS){
-	// 		printf("rejecting client as max connections reached\n");
+		if(numClients==MAX_CLIENTS){
+			printf("rejecting client as max connections reached\n");
 
-	// 		size_t sendmsglen = MSG_LEN*sizeof(unsigned char);
-	// 		unsigned char *sendmsg = malloc(sendmsglen);
-	// 		sprintf(sendmsg, "server: Too many conncetions. Try later.\n");
-	// 		int sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
-	// 		close(connectionSocket);
-	// 	}else{
+			size_t sendmsglen = MSG_LEN*sizeof(unsigned char);
+			unsigned char *sendmsg = malloc(sendmsglen);
+			sprintf(sendmsg, "server: Too many conncetions. Try later.\n");
+			int sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
+			close(connectionSocket);
+		}else{
 
-	// 		// increase number of clients and save the connectionSocket;
-	// 		numClients++;
-	// 		printf("a client connected\n");
+			// increase number of clients and save the connectionSocket;
+			numClients++;
+			printf("a client connected\n");
 
-	// 		struct Args con_args = {connectionSocket};
+			struct Args con_args = {connectionSocket};
 
-	// 		//handle the client in new thread
-	// 		pthread_t connection_thread;
-	// 		pthread_create(&connection_thread, NULL, handleConnection, (void *)&con_args);
-	// 	}
+			//handle the client in new thread
+			pthread_t connection_thread;
+			pthread_create(&connection_thread, NULL, handleConnection, (void *)&con_args);
+		}
 
-	// }
+	}
 	pthread_join(kdc_thread, (void **)(&ret));
 
 	return ret;
@@ -290,14 +292,14 @@ void* listenKDC(void *args){
 		}
 		printf("KDC: uid %d, nonce %d\n", uidClient, nonceClient);
 		sendmsglen = 0;
-		getKeyIVUser(0, key, iv);
+		getKeyIVUser(atoi(UID_CHAT_SERVER), key, iv);
 		sendmsglen += KEY_LEN_BITS/(sizeof(unsigned char)*8);
 		strncpy(sendmsg, key, sendmsglen);
 		sendmsglen += UID_LEN;
 		strncpy(sendmsg + KEY_LEN_BITS/(sizeof(unsigned char)*8), recvmsg, UID_LEN);
 
 		ciphertext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
-		cipherLen = cipher(sendmsg, (int)sendmsglen, ciphertext, 1, uidClient);
+		cipherLen = cipher(sendmsg, (int)sendmsglen, ciphertext, 1, atoi(UID_CHAT_SERVER));
 
 		sprintf(sendmsg, "%d", nonceClient);
 		sendmsglen = NONCE_LEN;
@@ -318,7 +320,7 @@ void* listenKDC(void *args){
 			printf("KDC: [error] sending to socket %d\n", connectionSocket);
 			close(connectionSocket);
 		}else{
-			printf("KDC: sent %ld bytes\n", sendlen);
+			printf("KDC: sent %ld bytes, cipher len %d\n", sendlen, cipherLen);
 		}
 	}
 	return 0;
@@ -330,32 +332,80 @@ void* handleConnection(void *Args){
 	//get the arguments
 	struct Args *con_args = Args;
 	int connectionSocket = con_args->connectionSocket;
-	// int clientID = con_args->clientID;
 
 	size_t recvmsglen = MSG_LEN*sizeof(unsigned char);
 	unsigned char *recvmsg = malloc(recvmsglen);
-	size_t recvlen, sendlen;
+	size_t recvlen;
 
 	size_t sendmsglen = MSG_LEN*sizeof(unsigned char);
 	unsigned char *sendmsg = malloc(sendmsglen);
+	size_t sendlen;
+
+	unsigned char *key = malloc(KEY_LEN_BITS/(sizeof(unsigned char)*8));
+	unsigned char *plaintext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
+	int plainLen;
+	int uidClient;
+
+	// receive the ticket
+	recvlen = recv(connectionSocket, (void *)recvmsg, recvmsglen, 0);
+
+	if (recvlen <= 0){
+		if(recvlen==-1){ //error
+			printf("Chat Server: error receiving \n");
+		}else if(recvlen==0){
+			printf("Chat Server: client disconnected abruptly\n");
+		}
+		close(connectionSocket);
+		numClients--;
+
+		free(sendmsg);
+		free(recvmsg);
+		free(key);
+		free(plaintext);
+		pthread_exit(NULL);
+	}
+	else{
+		unsigned char *lineEnd = strchr(recvmsg, '\n');
+		if(lineEnd==0){
+			printf("Chat Server: no line end in recv msg\n");
+		}else{
+			*lineEnd = 0;
+		}
+		printf("Chat Server: received %zd bytes: %s\n", recvlen, recvmsg);
+		plainLen = cipher(recvmsg, (int)recvlen, plaintext, 0, uidClient);
+		strncpy(key, plaintext, KEY_LEN_BITS/(sizeof(unsigned char)*8));
+		uidClient = atoi(plaintext + KEY_LEN_BITS/(sizeof(unsigned char)*8));
+
+		printf("Chat Server: uidClient %d, shared key %s\n", uidClient, key);
+	}
+
+	free(sendmsg);
+	free(recvmsg);
+	free(plaintext);
 
 	//authenticate the user
 	int clientInd;
-	if ( clientInd == -1 ){
-		printf("authentication failed. Closing connection.\n");
-
-		//informing client
-		sprintf(sendmsg, EXIT_REQUEST);
-		sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
-		if(sendlen==-1){ //error
-			printf("[error] sending to socket %d\n", connectionSocket);
-		}
-		free(sendmsg);
-		free(recvmsg);
+	if( !(userConnected(uidClient) >= 0) && (clientInd = getEmptySpot() >=0 ) ){
+		clientIDs[clientInd] = uidClient;
+		clientSockets[clientInd] = connectionSocket;
+		//allocate memory for sending and receiving
+		clientSendBuf[clientInd] = malloc(MSG_LEN*sizeof(char));
+		clientRecvBuf[clientInd] = malloc(MSG_LEN*sizeof(char));
+		clientKeyBuf[clientInd] = key;
+					
+	}else{
+		if(clientInd<0){
+			printf("Chat Server: no empty spot\n");
+		}else{
+			printf("Chat Server: user %d already connected\n", uidClient);
+		}		
 		close(connectionSocket);
 		numClients--;
+		free(key);
 		pthread_exit(NULL);
 	}
+
+	printf("Chat Server: authenticated and connected user\n");
 
 	unsigned char **args;
 	int executed;
