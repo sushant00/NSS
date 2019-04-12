@@ -55,7 +55,17 @@ write_all
 
   write_all <msg>
   
-Broadcasts msg to everyone, including the sender. The broadcasting is encrypted using the established shared key
+Broadcasts msg to everyone, excluding the sender. The broadcasting is encrypted using the established shared key
+
+
+create_group
+------------
+
+.. code:: shell
+
+  create_group [user1] [user2 ...]
+  
+Creates a group and adds specified users to it. Calling user is added by default. UserIDs are passed to add the corresponding users. A group id (same as group name) is returned to everyone added in a group. A user need not be online.
 
 
 Project Dir Structure
@@ -94,17 +104,22 @@ Assumptions
 - the iv is generated from the key
 - max password length for a user is 512 characters
 - client currently reads the password from shadow file, may be changed to enter the password
+- There can be at max 5 users in a group, and there can be at max 4 groups
+- a user can be added to group only by an invitation or at the time of group creation
+- group ids and group names are same
 
 Bugs defended / Extra Features
 ==============================
 
 - multiple sessions for a user is not allowed
+- a user cannot pass wrong uids to create_group
+- same user cannot be added multiple times to the same group
+- users entering wrong credential are not allowed to connect
 - server and client may exit abruptly and this is gracefully handled on both sides
 - wrong commands, arguments or inputs are gracefully handled
-- users entering wrong credential are not allowed to connect
 - only limited number of users can connect at a time
-- server can inform its exit to client
 - client checks the nonce recieved, and userid of chat server as in NS protocol
+
 
 
 Developed by Sushant Kumar Singh

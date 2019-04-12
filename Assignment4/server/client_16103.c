@@ -189,7 +189,7 @@ int recv_msg(int socket, size_t msglen, int decrypt){
 	}
 
 	if(decrypt){
-		printf("recv_msg: using shared key %s\n", sharedKey);
+		// printf("recv_msg: using shared key %s\n", sharedKey);
 		int plainLen = cipher(recv_buf, recvlen, plain_buf, 0, -1, sharedKey);
 
 		if(strcmp(EXIT_REQUEST, plain_buf)==0){				

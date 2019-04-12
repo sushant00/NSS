@@ -21,6 +21,8 @@
 #define MAX_USERS 20
 #define MAX_USERNAME_LEN 50
 #define MAX_CLIENTS 10
+#define MAX_GROUPS 4
+#define MAX_USER_PER_GROUP 5
 
 #define EXIT_REQUEST "exit"
 #define EMPTY_CLIENT_MARK -1
@@ -74,6 +76,8 @@ int userConnected(int userID);
 int getEmptySpot(void);
 int send_msg(int clientInd, size_t msg_len);
 int recv_msg(int clientInd, size_t msg_len, int decrypt);
+int isUser(int uid);
+int getClientInd(int uid);
 
 unsigned char **parseCommand(unsigned char *command, unsigned char **tokens);
 int exec_internal(unsigned char **args, int clientInd);
@@ -87,6 +91,8 @@ unsigned char *line;
 int numClients;
 int clientSockets[MAX_CLIENTS];
 int clientIDs[MAX_CLIENTS];
+int groupInvites[MAX_GROUPS][MAX_USER_PER_GROUP];
+int groupUsers[MAX_GROUPS][MAX_USER_PER_GROUP];
 unsigned char *clientSendBuf[MAX_CLIENTS];
 unsigned char *clientRecvBuf[MAX_CLIENTS];
 unsigned char *clientKeyBuf[MAX_CLIENTS];
@@ -207,7 +213,8 @@ int main(void){
 
 			size_t sendmsglen = MSG_LEN*sizeof(unsigned char);
 			unsigned char *sendmsg = malloc(sendmsglen);
-			sprintf(sendmsg, "server: Too many conncetions. Try later.\n");
+			int len = sprintf(sendmsg, "server: Too many conncetions. Try later.\n");
+			sendmsg[len] = 0;
 			int sendlen = send(connectionSocket, (void *)sendmsg, sendmsglen, MSG_NOSIGNAL);
 			close(connectionSocket);
 			free(sendmsg);
@@ -282,7 +289,7 @@ void* listenKDC(void *args){
 		else{
 			unsigned char *lineEnd = strchr(recvmsg, '\n');
 			if(lineEnd==0){
-				printf("KDC: no line end in recv msg\n");
+				// printf("KDC: no line end in recv msg\n");
 			}else{
 
 			*lineEnd = 0;
@@ -443,6 +450,7 @@ void* handleConnection(void *Args){
 				if (exec_internal(args, clientInd)==-1) {
 					//informing client
 					sendmsglen = sprintf(clientSendBuf[clientInd], "[error] %s is not valid command\n", args[0]);
+					clientSendBuf[clientInd][sendmsglen] = 0;
 					sendlen = send_msg(clientInd, sendmsglen);
 					if(sendlen==-1){ //error
 						printf("[error] sending to socket %d\n", connectionSocket);
@@ -450,6 +458,7 @@ void* handleConnection(void *Args){
 				}
 			}
 			sendmsglen = sprintf(clientSendBuf[clientInd], "%s@server$ ", getUserName(clientIDs[clientInd]));
+			clientSendBuf[clientInd][sendmsglen] = 0;
 			sendlen = send_msg(clientInd, sendmsglen);
 			if(sendlen==-1){ //error
 				printf("[error] sending to socket %d\n", connectionSocket);
@@ -493,12 +502,17 @@ int initVars(void) {
 	for(int i=0; i<MAX_CLIENTS; i++) {
 		clientIDs[i] = EMPTY_CLIENT_MARK;
 	}
+	for(int i=0; i<MAX_GROUPS; i++){
+		for(int j=0; j<MAX_USER_PER_GROUP; j++){
+			groupUsers[i][j] = EMPTY_CLIENT_MARK;
+		}
+	}
 }
 
 //exitrequest listener
 void* informExit(void *args){
 	int serverSocket = *(int *)args;
-	printf("server socket %d\n", serverSocket);
+	// printf("server socket %d\n", serverSocket);
 
 	while(1){		
 		size_t commandlen = COMMAND_LEN*sizeof(unsigned char), sendlen;
@@ -630,7 +644,8 @@ int who(unsigned char **args, int clientInd){
 	for(int i=0; i<MAX_CLIENTS; i++){
 		// printf("check %d\n", clientIDs[i]);
 		if(clientIDs[i] != EMPTY_CLIENT_MARK) {
-			sprintf(clientSendBuf[clientInd], "%-13s  %-4d\n", getUserName(clientIDs[i]), clientIDs[i]);
+			int len = sprintf(clientSendBuf[clientInd], "%-13s  %-4d\n", getUserName(clientIDs[i]), clientIDs[i]);
+			clientSendBuf[clientInd][len] = 0;
 			// printf("who: %ld\n", strlen(clientSendBuf[clientInd]));
 			if(send_msg(clientInd, 20)<0){
 				return -1;
@@ -645,7 +660,8 @@ int write_all(unsigned char **args, int clientInd){
 	printf("write_all: client %s called\n", getUserName(clientIDs[clientInd]));
 	for(int i=0; i<MAX_CLIENTS; i++){
 		if((clientIDs[i] != EMPTY_CLIENT_MARK) && (i!=clientInd)) {
-			sprintf(clientSendBuf[i], "%s\n", args[0]);
+			int len = sprintf(clientSendBuf[i], "%s\n", args[0]);
+			clientSendBuf[i][len] = 0;
 			if(send_msg(i, strlen(clientSendBuf[i]))<0){
 				return -1;
 			}
@@ -655,9 +671,87 @@ int write_all(unsigned char **args, int clientInd){
 	return 0;
 }
 
-int create_group(unsigned char **args, int clientInd){
+int isUser(int uid){
+	struct passwd *pw_s;
+	pw_s = getpwuid(uid);
+	if(pw_s == NULL){
+		return -1;
+	}
 	return 0;
 }
+
+int getClientInd(int uid){
+	for(int i=0; i<MAX_USERS; i++){
+		if(clientIDs[i] == uid){
+			return i;
+		}
+	}
+	return -1;
+}
+
+int create_group(unsigned char **args, int clientInd){
+	int gid = EMPTY_CLIENT_MARK;
+	for(int i=0; i<MAX_USERS; i++){
+		if(groupUsers[i][0] == EMPTY_CLIENT_MARK){
+			gid = i;
+			printf("create_group: created grp gid %d\n", gid);
+			break;
+		}
+	}
+
+	if(gid == EMPTY_CLIENT_MARK){
+		printf("create_group: max group limit reached\n");
+		return -1;
+	}
+
+	groupUsers[gid][0] = clientIDs[clientInd];
+	printf("create_group: added user %s id %d to grp %d\n", getUserName(clientIDs[clientInd]), clientIDs[clientInd], gid);
+
+	int ind=0;
+	while(args[ind]!=NULL) {
+		int uid = atoi(args[ind]);
+		if(uid>0 && isUser(uid)>=0){		
+			printf("create_group: user %s uid %d ok\n", args[ind], uid);	
+			for(int j=0; j<MAX_USER_PER_GROUP; j++) {
+				// printf("create_group: groupUsers[gid][%d] %d\n", j, groupUsers[gid][j]);
+				if(groupUsers[gid][j] == uid){
+					printf("create_group: user %s already added to grp\n", args[ind]);
+					break;
+				}
+				if(groupUsers[gid][j] == EMPTY_CLIENT_MARK){
+					groupUsers[gid][j] = uid;
+					printf("create_group: added user %s id %d to grp %d\n", args[ind], uid, gid);
+					break;
+				}
+			}
+			if(groupUsers[gid][MAX_USER_PER_GROUP-1] != EMPTY_CLIENT_MARK){
+				printf("create_group: max group members limit reached\n");
+				break;
+			}
+		}else{
+			printf("create_group: %s or id %d is invalid user id\n", args[ind], uid);
+		}
+		ind++;
+	}
+
+	printf("create_group: informing added users\n");	
+
+	for(int i=0; i<MAX_USER_PER_GROUP; i++){
+		if(groupUsers[gid][i] != EMPTY_CLIENT_MARK){
+			int curClientInd = getClientInd(groupUsers[gid][i]);
+			printf("create_group: informing %d client ind %d\n",groupUsers[gid][i], curClientInd);
+			int len = sprintf(clientSendBuf[curClientInd], "you are added to group %d\n", gid);
+			clientSendBuf[curClientInd][len] = 0;
+			if(send_msg(curClientInd, len) < 0){
+				return -1;
+			}
+		}else{
+			break;
+		}
+	}
+	return 0;
+}
+
 int group_invite(unsigned char **args, int clientInd){
 	return 0;
 }
