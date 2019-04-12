@@ -78,15 +78,14 @@ group_invite
 Sends an invite to user with user id uid, for coming in group gid. Sender must be in the group to send request to other user. Assumes uid user is online.
 
 
-
 group_invite_accept
 -------------------
 
 .. code:: shell
 
-  group_invite <gid> <uid>
+  group_invite_accept <gid>
   
-Sends an invite to user with user id uid, for coming in group gid. Sender must be in the group to send request to other user. Assumes uid user is online.
+Accept an invite to grp gid. A user added only if he was invited earlier.
 
 
 Project Dir Structure
@@ -126,6 +125,7 @@ Bugs defended / Extra Features
 - a user cannot pass wrong uids to create_group
 - same user cannot be added multiple times to the same group
 - wrong commands, arguments or inputs are gracefully handled, e.g. group_invite is both required args are checked
+- In group_invite_accept, it is checked if accepting was invited
 - users entering wrong credential are not allowed to connect
 - server and client may exit abruptly and this is gracefully handled on both sides
 - only limited number of users can connect at a time

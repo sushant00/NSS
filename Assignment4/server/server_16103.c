@@ -78,6 +78,9 @@ int send_msg(int clientInd, size_t msg_len);
 int recv_msg(int clientInd, size_t msg_len, int decrypt);
 int isUser(int uid);
 int getClientInd(int uid);
+int inGrp(int uid, int gid);
+int inviteSpace(int gid);
+int isInvited(int uid, int gid);
 
 unsigned char **parseCommand(unsigned char *command, unsigned char **tokens);
 int exec_internal(unsigned char **args, int clientInd);
@@ -505,6 +508,7 @@ int initVars(void) {
 	for(int i=0; i<MAX_GROUPS; i++){
 		for(int j=0; j<MAX_USER_PER_GROUP; j++){
 			groupUsers[i][j] = EMPTY_CLIENT_MARK;
+			groupInvites[i][j] = EMPTY_CLIENT_MARK;
 		}
 	}
 }
@@ -768,6 +772,17 @@ int inGrp(int uid, int gid){
 	return -1;
 }
 
+
+int inviteSpace(int gid){
+	for(int i=0; i<MAX_USER_PER_GROUP; i++){
+		if(groupInvites[gid][i] == EMPTY_CLIENT_MARK){
+			return i;
+		}
+	}
+	return -1;
+}
+
+
 int group_invite(unsigned char **args, int clientInd){
 	if(args[0]==NULL || args[1]==NULL){
 		printf("group_invite: 2 arguments required\n");
@@ -791,10 +806,19 @@ int group_invite(unsigned char **args, int clientInd){
 				printf("group_invite: user %d already in grp %d\n", uid, gid);
 			}else{
 				int curClientInd = getClientInd(uid);
-				int len = sprintf(clientSendBuf[curClientInd], "you are invited to group %d\n", gid);
-				clientSendBuf[curClientInd][len] = 0;
+				int len;
+				int inviteInd = inviteSpace(gid);
+				if(inviteInd < 0){
+					printf("group_invite: max invitation limit reached\n");
+					len = sprintf(clientSendBuf[curClientInd], "max invitation limit reached to group %d\n", gid);
+					clientSendBuf[curClientInd][len] = 0;
+				}else{
+					groupInvites[gid][inviteInd] = uid;
+					len = sprintf(clientSendBuf[curClientInd], "you are invited to group %d\n", gid);
+					clientSendBuf[curClientInd][len] = 0;
+					printf("group_invite: user %d invited in grp %d\n", uid, gid);
+				}
 				send_msg(curClientInd, len);
-				printf("group_invite: user %d invited in grp %d\n", uid, gid);
 			}
 		}else{
 			return -1;
@@ -805,9 +829,53 @@ int group_invite(unsigned char **args, int clientInd){
 	}
 	return 0;
 }
+
+int isInvited(int uid, int gid){
+	for(int i=0; i<MAX_USER_PER_GROUP; i++){
+		if(groupInvites[gid][i] == uid){
+			return i;
+		}
+	}
+	return -1;
+}
+
 int group_invite_accept(unsigned char **args, int clientInd){
+	if(args[0]==NULL){
+		printf("group_invite_accept: 1 argument required\n");
+		return -1;
+	}
+
+	int gid = atoi(args[0]);
+	int uid = clientIDs[clientInd];
+
+	printf("group_invite_accept: user %d accpeted invited to group %s id %d\n", uid, args[0], gid);
+	
+	if( (gid >= 0) && (gid < MAX_GROUPS) && (groupUsers[gid][0] != EMPTY_CLIENT_MARK) ){
+		
+		if(inGrp(uid, gid)>=0){
+			printf("group_invite_accept: user %d already in grp %d\n", uid, gid);
+			return -1;
+		}
+		int ind = isInvited(uid, gid);
+		int len;
+		if(ind >= 0){
+			len = sprintf(clientSendBuf[clientInd], "you are added to group %d\n", gid);
+			clientSendBuf[clientInd][len] = 0;
+			printf("group_invite: user %d added in grp %d\n", uid, gid);
+			groupInvites[gid][ind] = EMPTY_CLIENT_MARK;
+		}else{
+			printf("group_invite_accept: user %d not invited in grp %d\n", uid, gid);
+			len = sprintf(clientSendBuf[clientInd], "group_invite_accept: you were not invited in grp %d\n", gid);
+			clientSendBuf[clientInd][len] = 0;
+		}
+		send_msg(clientInd, len);
+	}else{
+		printf("group_invite_accept: gid %d invalid\n", gid);
+		return -1;
+	}
 	return 0;
 }
+
 int request_public_key(unsigned char **args, int clientInd){
 	return 0;
 }
