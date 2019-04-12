@@ -679,14 +679,17 @@ int write_all(unsigned char **args, int clientInd){
 	for(int i=0; i<MAX_CLIENTS; i++){
 		if((clientIDs[i] != EMPTY_CLIENT_MARK) && (i!=clientInd)) {
 			int j=0;
+			int len = 0;
+			len += sprintf(clientSendBuf[i]+len, "%s: ", getUserName(clientIDs[clientInd]));
 			while(args[j]!=NULL){
-				int len = sprintf(clientSendBuf[i], "%s\n", args[j]);
-				clientSendBuf[i][len] = 0;
-				if(send_msg(i, strlen(clientSendBuf[i]))<0){
-					return -1;
-				}
+				len += sprintf(clientSendBuf[i]+len, "%s ", args[j]);
 				j+=1;
 			}
+			clientSendBuf[i][len] = '\n';
+			clientSendBuf[i][len+1] = 0;
+			if(send_msg(i, strlen(clientSendBuf[i]))<0){
+				return -1;
+			}			
 		}
 	}
 	printf("write_all: done\n");
@@ -779,10 +782,15 @@ int create_group(unsigned char **args, int clientInd){
 }
 
 int inGrp(int uid, int gid){
-	for(int i=0; i<MAX_USER_PER_GROUP; i++){
-		if(groupUsers[gid][i] == uid){
-			return i;
+	if((gid >= 0) && (gid < MAX_GROUPS) && (groupUsers[gid][0] != EMPTY_CLIENT_MARK)){
+	 	for(int i=0; i<MAX_USER_PER_GROUP; i++){
+			// printf("inGrp: grpUsers[%d][%d] = %d, uid %d\n", gid, i, groupUsers[gid][i], uid);
+			if(groupUsers[gid][i] == uid){
+				return i;
+			}
 		}
+	}else{
+		// printf("inGrp: error\n");
 	}
 	return -1;
 }
@@ -813,30 +821,26 @@ int group_invite(unsigned char **args, int clientInd){
 		return -1;
 	}
 
-	if( (gid >= 0) && (gid < MAX_GROUPS) && (groupUsers[gid][0] != EMPTY_CLIENT_MARK) ){
-		// check if the calling user is allowed to invite to group
-		if(inGrp(clientIDs[clientInd], gid) >= 0){
-			printf("group_invite: allowed to invite to %d\n", gid);
-			if(inGrp(uid, gid) >= 0){
-				printf("group_invite: user %d already in grp %d\n", uid, gid);
-			}else{
-				int curClientInd = getClientInd(uid);
-				int len;
-				int inviteInd = emptySpace(gid, groupInvites);
-				if(inviteInd < 0){
-					printf("group_invite: max invitation limit reached\n");
-					len = sprintf(clientSendBuf[curClientInd], "max invitation limit reached to group %d\n", gid);
-					clientSendBuf[curClientInd][len] = 0;
-				}else{
-					groupInvites[gid][inviteInd] = uid;
-					len = sprintf(clientSendBuf[curClientInd], "group_invite: you are invited to group %d\n", gid);
-					clientSendBuf[curClientInd][len] = 0;
-					printf("group_invite: user %d invited in grp %d\n", uid, gid);
-				}
-				send_msg(curClientInd, len);
-			}
+	// check if the calling user is allowed to invite to group
+	if( (inGrp(clientIDs[clientInd], gid) >= 0) ){
+		printf("group_invite: allowed to invite to %d\n", gid);
+		if(inGrp(uid, gid) >= 0){
+			printf("group_invite: user %d already in grp %d\n", uid, gid);
 		}else{
-			return -1;
+			int curClientInd = getClientInd(uid);
+			int len;
+			int inviteInd = emptySpace(gid, groupInvites);
+			if(inviteInd < 0){
+				printf("group_invite: max invitation limit reached\n");
+				len = sprintf(clientSendBuf[curClientInd], "max invitation limit reached to group %d\n", gid);
+				clientSendBuf[curClientInd][len] = 0;
+			}else{
+				groupInvites[gid][inviteInd] = uid;
+				len = sprintf(clientSendBuf[curClientInd], "group_invite: you are invited to group %d\n", gid);
+				clientSendBuf[curClientInd][len] = 0;
+				printf("group_invite: user %d invited in grp %d\n", uid, gid);
+			}
+			send_msg(curClientInd, len);
 		}
 	}else{
 		printf("group_invite: gid %d invalid\n", gid);
@@ -908,9 +912,49 @@ int send_public_key(unsigned char **args, int clientInd){
 int init_group_dhxchg(unsigned char **args, int clientInd){
 	return 0;
 }
+
+
 int write_group(unsigned char **args, int clientInd){
+	if(args[0]==NULL || args[1]==NULL){
+		printf("write_group: 2 argument required\n");
+		return -1;
+	}
+
+	int gid = atoi(args[0]);
+	int uid = clientIDs[clientInd];
+
+	printf("write_group: user %d wants to write to group %s id %d\n", uid, args[0], gid);
+	
+	if( (inGrp(uid, gid) >= 0) ){
+		printf("write_group: client %s is in grp %d\n", getUserName(clientIDs[clientInd]), gid);
+		for(int i=0; i<MAX_USER_PER_GROUP; i++){
+			if(groupUsers[gid][i] == EMPTY_CLIENT_MARK){
+				break;
+			}
+			int curClientInd = getClientInd(groupUsers[gid][i]);
+			printf("write_group: cur client ind %d client ind %d\n", curClientInd, clientInd);
+			if((clientIDs[curClientInd] != EMPTY_CLIENT_MARK) && (curClientInd!=clientInd)) {
+				int j=1;
+				int len = 0;
+				len += sprintf(clientSendBuf[curClientInd]+len, "%s: ", getUserName(uid));
+				while(args[j]!=NULL){
+					len += sprintf(clientSendBuf[curClientInd]+len, "%s ", args[j]);
+					j+=1;
+				}
+				clientSendBuf[curClientInd][len] = '\n';
+				clientSendBuf[curClientInd][len+1] = 0;
+				if(send_msg(i, strlen(clientSendBuf[curClientInd]))<0){
+					return -1;
+				}			
+			}
+		}
+	}else{
+		printf("write_group: invalid grp id or user is not a member\n");
+		return -1;
+	}
 	return 0;
 }
+
 int list_user_files(unsigned char **args, int clientInd){
 	return 0;
 }

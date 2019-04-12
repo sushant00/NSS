@@ -88,6 +88,15 @@ group_invite_accept
 Accept an invite to grp gid. A user added only if he was invited earlier.
 
 
+write_group
+-------------------
+
+.. code:: shell
+
+  write_group <gid> <msg>
+  
+write encrypted msg to everyone in group gid. Assumes diffie hellman key exchange is done.
+
 Project Dir Structure
 =====================
 
