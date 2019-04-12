@@ -149,9 +149,12 @@ int getSharedKeyIV(int uid1, int uid2, unsigned char *key, unsigned char *iv){
 int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc, int uid, unsigned char *key) {
 	printf("cipher: called doEnc=%d, len_input=%d, input=%s\n", doEnc, len_input, input);
 	if(!(uid<0)){
-		key = malloc(KEY_LEN_BYTES);
+		key = malloc(KEY_LEN_BYTES+1);
 	}
-	unsigned char *iv = malloc(KEY_LEN_BYTES);
+	memset(output, 0, len_input);
+	input[len_input] = 0;
+
+	unsigned char *iv = malloc(KEY_LEN_BYTES+1);
 	getKeyIVUser(uid, key, iv);
 
 	int len_output = 0;
@@ -190,8 +193,8 @@ int cipher(unsigned char *input, int len_input, unsigned char *output, int doEnc
 
 int calculateHMAC(unsigned char *d, int len_d, unsigned char *md, int uid) {
 	// printf("calculateHMAC: called for len=%d,d=%s\n", len_d, d);
-	unsigned char *key = malloc(KEY_LEN_BYTES);
-	unsigned char *iv = malloc(KEY_LEN_BYTES);
+	unsigned char *key = malloc(KEY_LEN_BYTES+1);
+	unsigned char *iv = malloc(KEY_LEN_BYTES+1);
 	getKeyIVUser(uid, key, iv);
 
 	int len_md = 0;

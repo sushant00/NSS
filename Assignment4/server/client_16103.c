@@ -18,7 +18,7 @@ void* receiver(void *args);
 int send_msg(int socket, size_t msglen, int doEnc);
 int recv_msg(int socket, size_t msglen, int decrypt);
 
-unsigned char sharedKey[KEY_LEN_BYTES];
+unsigned char sharedKey[KEY_LEN_BYTES+1];
 unsigned char recv_buf[MSG_LEN];
 unsigned char send_buf[MSG_LEN];
 unsigned char cipher_buf[MSG_LEN];
@@ -105,9 +105,11 @@ int main(void){
 			printf("KDC sent shared key for chat server\n");
 
 			strncpy(sharedKey, plaintext+NONCE_LEN, KEY_LEN_BYTES);
+			sharedKey[KEY_LEN_BYTES] = 0;
 			ticket_len = plainLen - NONCE_LEN - UID_LEN - (KEY_LEN_BYTES);
 			ticket = malloc( ticket_len );
 			strncpy(ticket, plaintext+NONCE_LEN+UID_LEN+(KEY_LEN_BYTES), ticket_len );
+			ticket[ticket_len] = 0;
 			printf("ticket len %d received from KDC: %s\n", ticket_len, ticket);
 		}else{
 			printf("KDC sent shared key for unknown client\n");
@@ -135,6 +137,7 @@ int main(void){
 	}
 
 	strncpy(send_buf, ticket, ticket_len);
+	send_buf[ticket_len] = 0;
 	msglen = ticket_len;
 	sendlen = send_msg(clientSocket, msglen, 0);
 	// printf("sent sendlen %ld, msglen %ld\n", sendlen, msglen);
@@ -187,7 +190,6 @@ int recv_msg(int socket, size_t msglen, int decrypt){
 		exit(0);	
 
 	}
-
 	if(decrypt){
 		// printf("recv_msg: using shared key %s\n", sharedKey);
 		int plainLen = cipher(recv_buf, recvlen, plain_buf, 0, -1, sharedKey);
@@ -217,6 +219,7 @@ int send_msg(int socket, size_t msglen, int doEnc){
 	if(doEnc){
 		int cipherLen = cipher(send_buf, msglen, cipher_buf, 1, -1, sharedKey);
 		strncpy(send_buf, cipher_buf, cipherLen);
+		send_buf[cipherLen] = 0;
 		msglen = cipherLen;
 	}
 	size_t sendlen = send(socket, (void *)send_buf, msglen, MSG_NOSIGNAL);
@@ -227,7 +230,7 @@ int send_msg(int socket, size_t msglen, int doEnc){
 	}
 	unsigned char *lineEnd = strrchr(send_buf, '\n');
 	if(lineEnd==NULL){
-		printf("no line end in send_msg\n");
+		// printf("no line end in send_msg\n");
 	}else{
 		*lineEnd = 0;
 	}

@@ -79,7 +79,7 @@ int recv_msg(int clientInd, size_t msg_len, int decrypt);
 int isUser(int uid);
 int getClientInd(int uid);
 int inGrp(int uid, int gid);
-int inviteSpace(int gid);
+int emptySpace(int gid, int arr[][MAX_USER_PER_GROUP]);
 int isInvited(int uid, int gid);
 
 unsigned char **parseCommand(unsigned char *command, unsigned char **tokens);
@@ -265,8 +265,8 @@ void* listenKDC(void *args){
 	int cipherLen;
 	unsigned char *ciphertext;
 
-	unsigned char *key = malloc(KEY_LEN_BYTES);
-	unsigned char *iv = malloc(KEY_LEN_BYTES);
+	unsigned char *key = malloc(KEY_LEN_BYTES+1);
+	unsigned char *iv = malloc(KEY_LEN_BYTES+1);
 
 	//wait for clients
 	while(1){
@@ -360,7 +360,7 @@ void* handleConnection(void *Args){
 	unsigned char *sendmsg = malloc(sendmsglen);
 	size_t sendlen;
 
-	unsigned char *key = malloc(KEY_LEN_BYTES);
+	unsigned char *key = malloc(KEY_LEN_BYTES+1);
 	unsigned char *plaintext = malloc(sizeof(unsigned char)*sendmsglen + KEY_LEN_BITS );
 	int plainLen;
 	int uidClient;
@@ -435,14 +435,16 @@ void* handleConnection(void *Args){
 	while(1){
 		//receive the msg
 		recvlen = recv_msg(clientInd, recvmsglen, 1);
-
-		if (recvlen <= 0){
-			printf("Chat Server: removing client %s\n", getUserName(clientIDs[clientInd]));
+		if (recvlen == -1){
+			printf("Chat Server: removing client\n");
 			free(tokens);
 			pthread_exit(NULL);
 		}
 		else{
-			*strchr(clientPlainBuf[clientInd], '\n') = 0;	
+			unsigned char *lineEnd = strchr(clientPlainBuf[clientInd], '\n');
+			if(lineEnd!=NULL){
+				*lineEnd = 0;
+			}	
 			if(clientPlainBuf[clientInd][0] == 0) {
 				printf("blank msg received\n");
 			}else{
@@ -450,15 +452,7 @@ void* handleConnection(void *Args){
 				// printf("parsed the command\n");
 
 				//check and execute if internal command
-				if (exec_internal(args, clientInd)==-1) {
-					//informing client
-					sendmsglen = sprintf(clientSendBuf[clientInd], "[error] %s is not valid command\n", args[0]);
-					clientSendBuf[clientInd][sendmsglen] = 0;
-					sendlen = send_msg(clientInd, sendmsglen);
-					if(sendlen==-1){ //error
-						printf("[error] sending to socket %d\n", connectionSocket);
-					}
-				}
+				exec_internal(args, clientInd);
 			}
 			sendmsglen = sprintf(clientSendBuf[clientInd], "%s@server$ ", getUserName(clientIDs[clientInd]));
 			clientSendBuf[clientInd][sendmsglen] = 0;
@@ -582,8 +576,15 @@ int exec_internal(unsigned char **args, int clientInd) {
 			return 0;
 		}
 	}
+		//informing client
+	// int sendmsglen = sprintf(clientSendBuf[clientInd], "[error] %s is not valid command\n", args[0]);
+	// clientSendBuf[clientInd][sendmsglen] = 0;
+	// int sendlen = send_msg(clientInd, sendmsglen);
+	// if(sendlen==-1){ //error
+	// 	printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+	// }
 	printf("command %s not recognized\n", command);
-	return -1;				// not a internal command
+	return -1;
 }
 
 unsigned char *getUserName(int uid){
@@ -622,10 +623,15 @@ int recv_msg(int clientInd, size_t recvmsglen, int decrypt){
 		clientIDs[clientInd] = EMPTY_CLIENT_MARK;
 		close(clientSockets[clientInd]);
 		numClients--;
+		// printf("recv_msg: closed client socket\n");
 		return -1;
 	}
 	if(decrypt){
 		int plainLen = cipher(clientRecvBuf[clientInd], (int)recvlen, clientPlainBuf[clientInd], 0, -1, clientKeyBuf[clientInd]);
+		printf("recv_msg: cipher ret %d\n", plainLen);
+		if(plainLen == -1){
+			return 0;
+		}
 		return plainLen;
 	}
 	return recvlen;
@@ -638,6 +644,7 @@ int send_msg(int clientInd, size_t msg_len){
 		1, -1, clientKeyBuf[clientInd]);
 
 	strncpy(clientSendBuf[clientInd], clientCipherBuf[clientInd], cipherLen);
+	clientSendBuf[clientInd][cipherLen] = 0;
 	size_t sendlen = send(clientSockets[clientInd], (void *)clientSendBuf[clientInd], cipherLen, MSG_NOSIGNAL);
 
 	if(sendlen==-1){ //error
@@ -671,10 +678,14 @@ int write_all(unsigned char **args, int clientInd){
 	printf("write_all: client %s called\n", getUserName(clientIDs[clientInd]));
 	for(int i=0; i<MAX_CLIENTS; i++){
 		if((clientIDs[i] != EMPTY_CLIENT_MARK) && (i!=clientInd)) {
-			int len = sprintf(clientSendBuf[i], "%s\n", args[0]);
-			clientSendBuf[i][len] = 0;
-			if(send_msg(i, strlen(clientSendBuf[i]))<0){
-				return -1;
+			int j=0;
+			while(args[j]!=NULL){
+				int len = sprintf(clientSendBuf[i], "%s\n", args[j]);
+				clientSendBuf[i][len] = 0;
+				if(send_msg(i, strlen(clientSendBuf[i]))<0){
+					return -1;
+				}
+				j+=1;
 			}
 		}
 	}
@@ -750,8 +761,12 @@ int create_group(unsigned char **args, int clientInd){
 	for(int i=0; i<MAX_USER_PER_GROUP; i++){
 		if(groupUsers[gid][i] != EMPTY_CLIENT_MARK){
 			int curClientInd = getClientInd(groupUsers[gid][i]);
+			if(curClientInd < 0){
+				printf("create_group: user %d not online\n", groupUsers[gid][i]);
+				continue;
+			}
 			printf("create_group: informing %d client ind %d\n",groupUsers[gid][i], curClientInd);
-			int len = sprintf(clientSendBuf[curClientInd], "you are added to group %d\n", gid);
+			int len = sprintf(clientSendBuf[curClientInd], "create_group: you are added to group %d\n", gid);
 			clientSendBuf[curClientInd][len] = 0;
 			if(send_msg(curClientInd, len) < 0){
 				return -1;
@@ -773,9 +788,9 @@ int inGrp(int uid, int gid){
 }
 
 
-int inviteSpace(int gid){
+int emptySpace(int gid, int arr[][MAX_USER_PER_GROUP]){
 	for(int i=0; i<MAX_USER_PER_GROUP; i++){
-		if(groupInvites[gid][i] == EMPTY_CLIENT_MARK){
+		if(arr[gid][i] == EMPTY_CLIENT_MARK){
 			return i;
 		}
 	}
@@ -807,14 +822,14 @@ int group_invite(unsigned char **args, int clientInd){
 			}else{
 				int curClientInd = getClientInd(uid);
 				int len;
-				int inviteInd = inviteSpace(gid);
+				int inviteInd = emptySpace(gid, groupInvites);
 				if(inviteInd < 0){
 					printf("group_invite: max invitation limit reached\n");
 					len = sprintf(clientSendBuf[curClientInd], "max invitation limit reached to group %d\n", gid);
 					clientSendBuf[curClientInd][len] = 0;
 				}else{
 					groupInvites[gid][inviteInd] = uid;
-					len = sprintf(clientSendBuf[curClientInd], "you are invited to group %d\n", gid);
+					len = sprintf(clientSendBuf[curClientInd], "group_invite: you are invited to group %d\n", gid);
 					clientSendBuf[curClientInd][len] = 0;
 					printf("group_invite: user %d invited in grp %d\n", uid, gid);
 				}
@@ -859,10 +874,18 @@ int group_invite_accept(unsigned char **args, int clientInd){
 		int ind = isInvited(uid, gid);
 		int len;
 		if(ind >= 0){
-			len = sprintf(clientSendBuf[clientInd], "you are added to group %d\n", gid);
-			clientSendBuf[clientInd][len] = 0;
-			printf("group_invite: user %d added in grp %d\n", uid, gid);
-			groupInvites[gid][ind] = EMPTY_CLIENT_MARK;
+			ind = emptySpace(gid, groupUsers);
+			if(ind<0){
+				printf("group_invite_accept: max group users limit reached in grp %d\n", gid);
+				len = sprintf(clientSendBuf[clientInd], "group_invite_accept: max group users limit reached in grp %d\n", gid);
+				clientSendBuf[clientInd][len] = 0;
+			}else{
+				groupUsers[gid][ind] = uid;
+				groupInvites[gid][ind] = EMPTY_CLIENT_MARK;
+				len = sprintf(clientSendBuf[clientInd], "group_invite_accept: you are added to group %d\n", gid);
+				clientSendBuf[clientInd][len] = 0;
+				printf("group_invite: user %d added in grp %d\n", uid, gid);
+			}
 		}else{
 			printf("group_invite_accept: user %d not invited in grp %d\n", uid, gid);
 			len = sprintf(clientSendBuf[clientInd], "group_invite_accept: you were not invited in grp %d\n", gid);
