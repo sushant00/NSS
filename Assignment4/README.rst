@@ -68,6 +68,27 @@ create_group
 Creates a group and adds specified users to it. Calling user is added by default. UserIDs are passed to add the corresponding users. A group id (same as group name) is returned to everyone added in a group. A user need not be online.
 
 
+group_invite
+------------
+
+.. code:: shell
+
+  group_invite <gid> <uid>
+  
+Sends an invite to user with user id uid, for coming in group gid. Sender must be in the group to send request to other user. Assumes uid user is online.
+
+
+
+group_invite_accept
+-------------------
+
+.. code:: shell
+
+  group_invite <gid> <uid>
+  
+Sends an invite to user with user id uid, for coming in group gid. Sender must be in the group to send request to other user. Assumes uid user is online.
+
+
 Project Dir Structure
 =====================
 
@@ -80,17 +101,6 @@ server/
     client_16103.c
     server_16103.c
     
-
-
-Security Rules
-==============
-
-- a user is given write access to a dir or file only if it is the owner
-- a user is given read access to a dir or file only if is is the owner or is member of the group of corresponding file or dir
-- by default users are denied connection or any access if not authenticated
-- a user can be in multiple groups
-- a file or dir can have only one owner and only one group
-
 
 
 Assumptions
@@ -108,15 +118,16 @@ Assumptions
 - a user can be added to group only by an invitation or at the time of group creation
 - group ids and group names are same
 
+
 Bugs defended / Extra Features
 ==============================
 
 - multiple sessions for a user is not allowed
 - a user cannot pass wrong uids to create_group
 - same user cannot be added multiple times to the same group
+- wrong commands, arguments or inputs are gracefully handled, e.g. group_invite is both required args are checked
 - users entering wrong credential are not allowed to connect
 - server and client may exit abruptly and this is gracefully handled on both sides
-- wrong commands, arguments or inputs are gracefully handled
 - only limited number of users can connect at a time
 - client checks the nonce recieved, and userid of chat server as in NS protocol
 

@@ -567,7 +567,14 @@ int exec_internal(unsigned char **args, int clientInd) {
 
 	for(int i=0; i<NUM_COMMANDS; i++){
 		if(strcmp(command, COMMAND_NAMES[i])==0){
-			COMMAND_FUNCS[i](args+1, clientInd);
+			int ret = COMMAND_FUNCS[i](args+1, clientInd);
+			if(ret<0){
+				strcpy(clientSendBuf[clientInd], "[error] check the arguments\n");
+				if(send_msg(clientInd, strlen(clientSendBuf[clientInd])) < 0){
+					return -1;
+				}
+				return -1;
+			}
 			return 0;
 		}
 	}
@@ -752,7 +759,50 @@ int create_group(unsigned char **args, int clientInd){
 	return 0;
 }
 
+int inGrp(int uid, int gid){
+	for(int i=0; i<MAX_USER_PER_GROUP; i++){
+		if(groupUsers[gid][i] == uid){
+			return i;
+		}
+	}
+	return -1;
+}
+
 int group_invite(unsigned char **args, int clientInd){
+	if(args[0]==NULL || args[1]==NULL){
+		printf("group_invite: 2 arguments required\n");
+		return -1;
+	}
+
+	int gid = atoi(args[0]);
+	int uid = atoi(args[1]);
+	printf("group_invite: group %s id %d, user %s id %d\n", args[0], gid, args[1], uid);
+
+	if(isUser(uid)<0){
+		printf("group_invite: user %d is invalid\n", uid);
+		return -1;
+	}
+
+	if( (gid >= 0) && (gid < MAX_GROUPS) && (groupUsers[gid][0] != EMPTY_CLIENT_MARK) ){
+		// check if the calling user is allowed to invite to group
+		if(inGrp(clientIDs[clientInd], gid) >= 0){
+			printf("group_invite: allowed to invite to %d\n", gid);
+			if(inGrp(uid, gid) >= 0){
+				printf("group_invite: user %d already in grp %d\n", uid, gid);
+			}else{
+				int curClientInd = getClientInd(uid);
+				int len = sprintf(clientSendBuf[curClientInd], "you are invited to group %d\n", gid);
+				clientSendBuf[curClientInd][len] = 0;
+				send_msg(curClientInd, len);
+				printf("group_invite: user %d invited in grp %d\n", uid, gid);
+			}
+		}else{
+			return -1;
+		}
+	}else{
+		printf("group_invite: gid %d invalid\n", gid);
+		return -1;
+	}
 	return 0;
 }
 int group_invite_accept(unsigned char **args, int clientInd){
