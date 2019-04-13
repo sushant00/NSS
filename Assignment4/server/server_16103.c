@@ -955,9 +955,69 @@ int write_group(unsigned char **args, int clientInd){
 	return 0;
 }
 
+unsigned char *getHomeDir(int uid){
+	struct passwd *pw_s;
+	pw_s = getpwuid(uid);
+	if(pw_s == NULL) {
+		perror("getHomeDir: error finding uid ");
+		return NULL;
+	}
+	return (unsigned char *)pw_s->pw_dir;
+}
+
 int list_user_files(unsigned char **args, int clientInd){
+	if(args[0]==NULL){
+		printf("list_user_files: 1 argument required\n");
+		return -1;
+	}
+
+	int uid_caller = clientIDs[clientInd];
+	int uid_owner = atoi(args[0]);
+	printf("list_user_files: called by %d for files of %s id %d\n", uid_caller, args[0], uid_owner);
+	if( (isUser(uid_owner) < 0) ){
+		printf("list_user_files: invalid user id passed %s\n", args[0]);
+		return -1;
+	}
+
+
+	DIR *d;
+	struct dirent *dir;
+	d = opendir(getHomeDir(uid_owner));
+
+	unsigned char *path = malloc(MAX_DIR_LEN);
+	strcpy(path, getHomeDir(uid_owner));
+	strcpy(strchr(path,0), "/");
+	int len = 0;
+	len += sprintf(clientSendBuf[clientInd]+len, "list_user_files: files with read access\n");
+	clientSendBuf[clientInd][len] = 0;
+	
+	seteuid(uid_caller);
+	if (d) {
+		while (( dir = readdir(d)) != NULL ) {
+			// printf("ls: file entry %s\n", dir->d_name);
+			if ( dir->d_name[0]=='.' ) {
+				// printf("ls: skipping %s\n", dir->d_name);
+				continue;
+			}
+			strcpy(strrchr(path, '/')+1, dir->d_name);
+			if( ( (access(path, R_OK)==0) && !(dir->d_type == DT_DIR) ) ){
+				printf("list_user_files: read access allowed for %s\n", path);
+				len += sprintf(clientSendBuf[clientInd]+len, "%s\n", dir->d_name);
+				clientSendBuf[clientInd][len] = 0;
+			}else{
+				printf("list_user_files: read access not allowed or is a dir %s\n", path);
+			}
+		}
+	}
+	seteuid(0);
+	int sendlen = send_msg(clientInd, len);
+	if(sendlen==-1){ //error
+		printf("[error] sending to socket %d\n", clientSockets[clientInd]);
+		return -1;
+	}
 	return 0;
 }
+
 int request_file(unsigned char **args, int clientInd){
 	return 0;
 }
