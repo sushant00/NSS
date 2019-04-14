@@ -6,7 +6,7 @@
 #include <errno.h>
 
 #include <pwd.h>
-#include<sys/wait.h> 
+#include <sys/wait.h> 
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>

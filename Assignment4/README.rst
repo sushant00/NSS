@@ -36,6 +36,19 @@ Authenticate the user by typing in username (password not required)
 
 Now the user is presented with a shell. Supported commands are mentioned below.
 
+
+Creating RSA Key and certificate
+------------------------------
+Following commands can be used to create public, private keys and a self signed certificate. These are stored in a directory 'rsa' inside home directory of each user
+
+.. code:: shell
+
+	sudo openssl req -x509 -newkey rsa:1024 -keyout user_private.pem -out user_cert.pem
+	
+	sudo openssl rsa -in user_private.pem -pubout -out user_public.pem
+
+
+
 Commands Supported
 ==================
 who
@@ -88,6 +101,26 @@ group_invite_accept
 Accept an invite to grp gid. A user added only if he was invited earlier.
 
 
+request_public_key
+-------------------
+
+.. code:: shell
+
+  request_public_key <uid>
+  
+Sends the request for public key of user uid. A request can be any number of time, even if the user already has received the public key.
+
+
+send_public_key
+-------------------
+
+.. code:: shell
+
+  send_public_key <uid>
+  
+Sends the response public key to user uid. A response can be sent any number of time, even if the user already has sent the public key.
+
+
 write_group
 -------------------
 
@@ -96,6 +129,17 @@ write_group
   write_group <gid> <msg>
   
 write encrypted msg to everyone in group gid. Assumes diffie hellman key exchange is done.
+
+
+list_user_files
+-------------------
+
+.. code:: shell
+
+  list_user_files <uid>
+  
+Lists the file in home directory of user uid, that have read access for calling user. The read access is checked from the actual linux permissions/ACLs. Does not lists folders or hidden files.
+
 
 Project Dir Structure
 =====================
@@ -108,6 +152,7 @@ server/
     server
     client_16103.c
     server_16103.c
+    utils.c
     
 
 
@@ -125,6 +170,7 @@ Assumptions
 - There can be at max 5 users in a group, and there can be at max 4 groups
 - a user can be added to group only by an invitation or at the time of group creation
 - group ids and group names are same
+- Server has the public key of every client (in server/rsa directory)
 
 
 Bugs defended / Extra Features

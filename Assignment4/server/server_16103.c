@@ -31,7 +31,8 @@
 #define MAX_TOKENS 50		//assume max tokens = 50
 
 #define NUM_COMMANDS 12
-
+#define PUB_KEY_PATH "rsa/"
+#define PUB_KEY_FILE_END "_public.pem"
 
 //supported commands
 int who(unsigned char **args, int clientInd);
@@ -591,10 +592,12 @@ unsigned char *getUserName(int uid){
 
 	struct passwd *pw_s;
 	pw_s = getpwuid(uid);
+	// printf("getUserName: user id %d\n", uid);
 	if(pw_s == NULL) {
 		perror("getUserName: error finding uid ");
 		return NULL;
 	}
+	// printf("getUserName: user id %d name %s\n", uid, pw_s->pw_name);
 	return pw_s->pw_name;
 }
 
@@ -687,7 +690,8 @@ int write_all(unsigned char **args, int clientInd){
 			}
 			clientSendBuf[i][len] = '\n';
 			clientSendBuf[i][len+1] = 0;
-			if(send_msg(i, strlen(clientSendBuf[i]))<0){
+			len+=1;
+			if( (send_msg(i, len)<0) ){
 				return -1;
 			}			
 		}
@@ -828,6 +832,10 @@ int group_invite(unsigned char **args, int clientInd){
 			printf("group_invite: user %d already in grp %d\n", uid, gid);
 		}else{
 			int curClientInd = getClientInd(uid);
+			if( (curClientInd < 0) ){
+				printf("group_invite: user %s id %d offline\n", getUserName(uid), uid);
+				return -1;
+			}
 			int len;
 			int inviteInd = emptySpace(gid, groupInvites);
 			if(inviteInd < 0){
@@ -903,12 +911,88 @@ int group_invite_accept(unsigned char **args, int clientInd){
 	return 0;
 }
 
+unsigned char *getPubKeyFileName(int uid){
+	if( (isUser(uid)<0) ){
+		printf("getPubKeyFileName: user id %d invalid\n", uid);
+		return NULL;
+	}
+
+	unsigned char *filename = malloc(MAX_DIR_LEN);
+	strcpy(filename, PUB_KEY_PATH);
+	strcpy(filename + strlen(filename), getUserName(uid));
+	strcpy(filename + strlen(filename), PUB_KEY_FILE_END);
+	return filename;
+}
+
+
 int request_public_key(unsigned char **args, int clientInd){
+	if(args[0]==NULL){
+		printf("request_public_key: 1 argument required\n");
+		return -1;
+	}
+	printf("request_public_key: called for uid %s\n", args[0]);
+
+	int uid = atoi(args[0]);
+	printf("request_public_key: user %s id %d requested pub key of %s id %d\n", getUserName(clientIDs[clientInd]), clientIDs[clientInd], getUserName(uid), uid);
+	if( (isUser(uid)<0) ){
+		printf("request_public_key: user id %d invalid\n", uid);
+		return -1;
+	}
+	int curClientInd = getClientInd(uid);
+	if( (curClientInd < 0) ){
+		printf("request_public_key: user %s id %d offline\n", getUserName(uid), uid);
+		return -1;
+	}
+	int len = sprintf(clientSendBuf[curClientInd], "%s: send your public key\n", getUserName(clientIDs[clientInd]));
+	if( (send_msg(curClientInd, len)<0) ){
+		return -1;
+	}	
 	return 0;
 }
+
 int send_public_key(unsigned char **args, int clientInd){
+	if(args[0]==NULL){
+		printf("send_public_key: 1 argument required\n");
+		return -1;
+	}
+
+	int uid = atoi(args[0]);
+	printf("send_public_key: user %s id %d wants to send pub key to user %s id %d\n", getUserName(uid), uid, getUserName(clientIDs[clientInd]), clientIDs[clientInd]);
+	
+	unsigned char *pub_key_filename = getPubKeyFileName(uid);
+	if( (pub_key_filename == NULL) ){
+		printf("send_public_key: error reading public key file of user %d\n", uid);
+		return -1;
+	}
+
+	int curClientInd = getClientInd(uid);
+	if( (curClientInd < 0) ){
+		printf("send_public_key: user %s id %d offline\n", getUserName(uid), uid);
+		return -1;
+	}
+
+	//get the public key file content
+	FILE* filePtr = fopen(pub_key_filename, "r");
+	if(filePtr==NULL){
+		printf("send_public_key: some error opening %s\n", pub_key_filename);
+		return -1;
+	}
+	unsigned char c;
+	int index = 0;
+	index = 0;
+	//read the file content till end of file
+	while((c = (unsigned char)fgetc(filePtr)) != (unsigned char)EOF) {
+		clientSendBuf[curClientInd][index++] = c;
+	}
+	clientSendBuf[curClientInd][index++] = 0;
+	if( (send_msg(curClientInd, index)<0) ){
+		return -1;
+	}
+	fclose(filePtr);
+	printf("send_public_key: public key of user %s id %d sent successfully to user %s id %d\n", getUserName(uid), uid, getUserName(clientIDs[clientInd]), clientIDs[clientInd]);
 	return 0;
 }
+
 int init_group_dhxchg(unsigned char **args, int clientInd){
 	return 0;
 }
@@ -932,6 +1016,10 @@ int write_group(unsigned char **args, int clientInd){
 				break;
 			}
 			int curClientInd = getClientInd(groupUsers[gid][i]);
+			if( (curClientInd < 0) ){
+				printf("write_group: user %s id %d offline\n", getUserName(clientIDs[curClientInd]), clientIDs[curClientInd]);
+				continue;
+			}
 			printf("write_group: cur client ind %d client ind %d\n", curClientInd, clientInd);
 			if((clientIDs[curClientInd] != EMPTY_CLIENT_MARK) && (curClientInd!=clientInd)) {
 				int j=1;
@@ -943,7 +1031,8 @@ int write_group(unsigned char **args, int clientInd){
 				}
 				clientSendBuf[curClientInd][len] = '\n';
 				clientSendBuf[curClientInd][len+1] = 0;
-				if(send_msg(i, strlen(clientSendBuf[curClientInd]))<0){
+				len+=1;
+				if(send_msg(curClientInd, len)<0){
 					return -1;
 				}			
 			}
