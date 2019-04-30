@@ -95,6 +95,8 @@ int main(int argc, char **args){
 	pthread_t scan_thread;
 	pthread_create(&scan_thread, NULL, scanResponse, (void *)&scannerSocket);
 
+	sleep(2);
+
 	char datagram[MSG_LEN];
 	memset(datagram, 0, MSG_LEN);
 
@@ -158,7 +160,7 @@ int main(int argc, char **args){
 			//set the port number
 			// printf("sending pkt to port %d\n", port_num);
 			tcp_h->dest = htons(port_num);
-			
+			tcp_h->check = 0; //important as this is inside a loop, otherwise wrong checksum calculated
 			// printf("adding source addr to ps_h %d to %d\n", local_addr.sin_addr.s_addr, ps_h.src_addr);
 			ps_h.src_addr = local_addr.sin_addr.s_addr;
 			// printf("added source addr to ps_h\n");
@@ -211,10 +213,10 @@ void *scanResponse(void *args){
 	int from_addr_size;
 	//keep receiving the incoming reponses and scan for useful info
 	while(1){
-		printf("scanResponse: receiving...\n");
+		// printf("scanResponse: receiving...\n");
 		recvlen = recvfrom(recvSocket, recv_buf, MSG_LEN, 0, &from_addr, &from_addr_size);
-		printf("scanResponse: received a response\n");
-		if(recvlen==-1){ //error
+		// printf("scanResponse: received a response\n");
+		if(recvlen<0){ //error
 			printf("scanResponse: error receiving\n");
 			exit(1);			
 		}
@@ -239,13 +241,15 @@ void *scanResponse(void *args){
 				}else if( !syn_scan && (tcp_h->rst == 1) && (tcp_h->ack == 1) ){
 					printf("scanResponse: Port %d/tcp closed|filtered\n", ntohs(tcp_h->source));
 				}
+				// else{
+				// 	printf("scanResponse: Port %d syn %d, ack %d fin %d\n", ntohs(tcp_h->source), tcp_h->syn, tcp_h->ack, tcp_h->fin);
+				// }
 			}else{
 				printf("scanResponse: target ip did not match\n");
 			}
 		}else{
 			printf("scanResponse: not a tcp protocol packet\n");
 		}
-
 	}
 }
 
