@@ -45,7 +45,7 @@ Design
 Assumptions
 ============
 
-- The scanner should be stopped using SIG_INT, otherwise it keeps on flooding the target ip
+- The scanner only sends one syn pkt to ports
 - The scanner by default scans all the port numbers of the given ip
 - fin scanner report closed ports, others are assumed to be open
 - syn scanner report open ports, others are assumed to be closed

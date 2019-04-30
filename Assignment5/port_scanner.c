@@ -22,8 +22,8 @@
 #define SERVER_PORT 12000
 #define MSG_LEN 4096
 
-#define PORT_MIN 5500
-#define PORT_MAX 5600
+#define PORT_MIN 5540
+#define PORT_MAX 5560
 
 unsigned short calcCheckSum(unsigned short *addr, size_t len);
 void *scanResponse(void *args);
@@ -91,6 +91,10 @@ int main(int argc, char **args){
 	
 	printf("scanner ready\n");
 
+	//scan the tcp responses
+	pthread_t scan_thread;
+	pthread_create(&scan_thread, NULL, scanResponse, (void *)&scannerSocket);
+
 	char datagram[MSG_LEN];
 	memset(datagram, 0, MSG_LEN);
 
@@ -122,9 +126,11 @@ int main(int argc, char **args){
 	if(syn_scan){
 		tcp_h->fin = 0;
 	}else{
+		printf("setting fin\n");
 		tcp_h->fin = 1;
 	}
 	if(syn_scan){
+		printf("setting syn\n");
 		tcp_h->syn = 1;
 	}else{
 		tcp_h->syn = 0;
@@ -137,14 +143,9 @@ int main(int argc, char **args){
 	tcp_h->check = 0;
 	tcp_h->urg_ptr = 0;
 
-
-	//scan the tcp responses
-	pthread_t scan_thread;
-	pthread_create(&scan_thread, NULL, scanResponse, (void *)&scannerSocket);
-
 	printf("starting scan...\n");
 	
-	while(1){
+	// while(1){
 		int port_min = PORT_MIN;
 		int port_max = PORT_MAX;
 		printf("checking port specs\n");
@@ -178,12 +179,12 @@ int main(int argc, char **args){
 			size_t sendlen = sizeof(struct iphdr) + sizeof(struct tcphdr);
 			ret = sendto( scannerSocket, datagram, sendlen, 0, (struct sockaddr *)&dst_addr, sizeof(dst_addr));
 			if(ret < 0){
-				printf("error sending syn to port %d\n",port_num);
+				printf("error sending to port %d\n",port_num);
 				return -1;
 			}else{
-				printf("sent syn pkt to port %d\n", port_num);
+				printf("sent pkt to port %d\n", port_num);
 			}
-		}
+		// }
 
 	}
 	pthread_join(scan_thread, NULL);
@@ -210,7 +211,9 @@ void *scanResponse(void *args){
 	int from_addr_size;
 	//keep receiving the incoming reponses and scan for useful info
 	while(1){
+		printf("scanResponse: receiving...\n");
 		recvlen = recvfrom(recvSocket, recv_buf, MSG_LEN, 0, &from_addr, &from_addr_size);
+		printf("scanResponse: received a response\n");
 		if(recvlen==-1){ //error
 			printf("scanResponse: error receiving\n");
 			exit(1);			
@@ -231,9 +234,9 @@ void *scanResponse(void *args){
 
 			//Syn and Ack are set means port is open
 			if( (src_addr.sin_addr.s_addr == target_addr.sin_addr.s_addr) ){
-				if ( (tcp_h->syn == 1) && (tcp_h->ack == 1) ) {
+				if ( syn_scan && (tcp_h->syn == 1) && (tcp_h->ack == 1) ) {
 					printf("scanResponse: Port %d/tcp open|filtered\n", ntohs(tcp_h->source));
-				}else if((tcp_h->rst == 1) && (tcp_h->ack == 1) ){
+				}else if( !syn_scan && (tcp_h->rst == 1) && (tcp_h->ack == 1) ){
 					printf("scanResponse: Port %d/tcp closed|filtered\n", ntohs(tcp_h->source));
 				}
 			}else{
