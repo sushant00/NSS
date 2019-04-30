@@ -26,6 +26,7 @@
 #define PORT_MAX 65535
 
 unsigned short calcCheckSum(unsigned short *addr, size_t len);
+void *scanResponse(void *args);
 
 //for the checksum calculation
 struct pseudo_header{
@@ -87,19 +88,19 @@ int main(int argc, char **args){
 
 	struct iphdr *ip_h = (struct iphdr *) datagram;
 	struct tcphdr *tcp_h = (struct tcphdr *) (datagram + sizeof(struct ip));
-	struct pseudo_header ps_h;
+	struct pseudo_header *ps_h;
 
 	ip_h->ihl = 5; //ip header len
 	ip_h->version = 4;
 	ip_h->tos = 0;
-	ip_h->tot_len = sizeof(struct iphdr)+sizeof(tcphdr);
+	ip_h->tot_len = sizeof(struct iphdr)+sizeof(struct tcphdr);
 	ip_h->id = htons(12345);
 	ip_h->frag_off = 0;
 	ip_h->ttl = 100;
 	ip_h->protocol = IPPROTO_TCP;
 	ip_h->check = 0; //skip checksum field for now
-	ip_h->saddr = local_addr.sin_addr;
-	ip_h->daddr = dst_addr.sin_addr;
+	ip_h->saddr = local_addr.sin_addr.s_addr;
+	ip_h->daddr = dst_addr.sin_addr.s_addr;
 
 	// now calc checksum
 	ip_h->check = calcCheckSum( (unsigned short *)datagram, (ip_h->tot_len)/2 );
@@ -114,7 +115,7 @@ int main(int argc, char **args){
 	tcp_h->syn = 1;
 	tcp_h->rst = 0;
 	tcp_h->psh = 0;
-	tcp_h->ack = 0
+	tcp_h->ack = 0;
 	tcp_h->urg = 0;
 	tcp_h->window = htons(MSG_LEN);
 	tcp_h->check = 0;
@@ -138,17 +139,17 @@ int main(int argc, char **args){
 			//set the port number
 			tcp_h->dest = htons(port_num);
 
-			ps_h.src_addr = local_addr.sin_addr.s_addr;
-			ps_h.dst_addr = dst_addr.sin_addr.s_addr;
-			ps_h.reserved = 0;
-			ps_h.protocol = IPPROTO_TCP;
-			ps_h.tcp_len = htons( sizeof(struct tcphdr) );
+			ps_h->src_addr = local_addr.sin_addr.s_addr;
+			ps_h->dst_addr = dst_addr.sin_addr.s_addr;
+			ps_h->reserved = 0;
+			ps_h->protocol = IPPROTO_TCP;
+			ps_h->tcp_len = htons( sizeof(struct tcphdr) );
 
-			memcpy(ps_h.tcp_h, tcp_h, sizeof(struct tcphdr));
+			memcpy(&ps_h->tcp_h, tcp_h, sizeof(struct tcphdr));
 			tcp_h->check = calcCheckSum( (unsigned short *)ps_h, sizeof(struct pseudo_header));
 
 			size_t sendlen = sizeof(struct iphdr) + sizeof(struct tcphdr);
-			ret = sendto( scannerSocket, datagram, sendlen, (struct sockaddr *) &dst_addr, sizeof(dst_addr));
+			ret = sendto( scannerSocket, datagram, sendlen, 0, (struct sockaddr *)&dst_addr, sizeof(dst_addr));
 			if(ret < 0){
 				printf("error sending syn to port %d\n",port_num);
 				return -1;
@@ -179,19 +180,20 @@ void *scanResponse(void *args){
 
 	unsigned char *recv_buf = malloc(MSG_LEN);
 	size_t recvlen;
+	int from_addr_size;
 	//keep receiving the incoming reponses and scan for useful info
 	while(1){
-		recvlen = recvfrom(recvSocket, recv_buf, MSG_LEN, 0, &from_addr, sizeof(sockaddr));
+		recvlen = recvfrom(recvSocket, recv_buf, MSG_LEN, 0, &from_addr, &from_addr_size);
 		if(recvlen==-1){ //error
 			printf("scanResponse: error receiving\n");
-			return;			
+			exit(1);			
 		}
 
 		struct iphdr *ip_h;
 		struct tcphdr *tcp_h;
 		struct sockaddr_in src_addr, dst_addr;
-		memset(&src, 0, sizeof(sockaddr_in));
-		memset(&dst, 0, sizeof(sockaddr_in));
+		memset(&src_addr, 0, sizeof(struct sockaddr_in));
+		memset(&dst_addr, 0, sizeof(struct sockaddr_in));
 
 		ip_h = (struct iphdr *)recv_buf;
 
@@ -209,8 +211,6 @@ void *scanResponse(void *args){
 		}
 
 	}
-
-	return;
 }
 
 
@@ -230,10 +230,11 @@ unsigned short calcCheckSum(unsigned short *data, size_t len){
 	}
 
 	//convert to 16 bits checksum
-	while( csum >> 16)
+	while( csum >> 16){
 		csum = (csum >> 16) + (csum & 0xffff);
+	}
 
-	csum = ~csum
+	csum = ~csum;
 
 	return (unsigned short)csum;
 }
