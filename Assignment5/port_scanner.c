@@ -22,8 +22,8 @@
 #define SERVER_PORT 12000
 #define MSG_LEN 4096
 
-#define PORT_MIN 0
-#define PORT_MAX 65535
+#define PORT_MIN 5500
+#define PORT_MAX 5600
 
 unsigned short calcCheckSum(unsigned short *addr, size_t len);
 void *scanResponse(void *args);
@@ -80,7 +80,7 @@ int main(int argc, char **args){
 	//IPv4 local address
 	local_addr.sin_family = AF_INET;
 	local_addr.sin_port = htons(SERVER_PORT);		//host to network byte(big endian) short
-	inet_pton(AF_INET, (const char *)"127.0.0.1", &local_addr.sin_addr);
+	inet_pton(AF_INET, (const char *)"10.0.0.4", &local_addr.sin_addr);
 	
 	//IPv4 address
 	dst_addr.sin_family = AF_INET;
@@ -96,7 +96,7 @@ int main(int argc, char **args){
 
 	struct iphdr *ip_h = (struct iphdr *) datagram;
 	struct tcphdr *tcp_h = (struct tcphdr *) (datagram + sizeof(struct ip));
-	struct pseudo_header *ps_h;
+	struct pseudo_header ps_h;
 
 	ip_h->ihl = 5; //ip header len
 	ip_h->version = 4;
@@ -119,8 +119,16 @@ int main(int argc, char **args){
 	tcp_h->seq = htonl(12345);
 	tcp_h->ack_seq = 0;
 	tcp_h->doff = sizeof(struct tcphdr)/4;
-	tcp_h->fin = 0;
-	tcp_h->syn = 1;
+	if(syn_scan){
+		tcp_h->fin = 0;
+	}else{
+		tcp_h->fin = 1;
+	}
+	if(syn_scan){
+		tcp_h->syn = 1;
+	}else{
+		tcp_h->syn = 0;
+	}
 	tcp_h->rst = 0;
 	tcp_h->psh = 0;
 	tcp_h->ack = 0;
@@ -139,22 +147,33 @@ int main(int argc, char **args){
 	while(1){
 		int port_min = PORT_MIN;
 		int port_max = PORT_MAX;
+		printf("checking port specs\n");
 		if(args[3]!=NULL){
 			port_min = atoi(args[3]);
 			port_max = atoi(args[3]);
 		}
+		printf("looping ports\n");
 		for(int port_num = port_min; port_num <= port_max; port_num++){
 			//set the port number
+			// printf("sending pkt to port %d\n", port_num);
 			tcp_h->dest = htons(port_num);
+			
+			// printf("adding source addr to ps_h %d to %d\n", local_addr.sin_addr.s_addr, ps_h.src_addr);
+			ps_h.src_addr = local_addr.sin_addr.s_addr;
+			// printf("added source addr to ps_h\n");
 
-			ps_h->src_addr = local_addr.sin_addr.s_addr;
-			ps_h->dst_addr = dst_addr.sin_addr.s_addr;
-			ps_h->reserved = 0;
-			ps_h->protocol = IPPROTO_TCP;
-			ps_h->tcp_len = htons( sizeof(struct tcphdr) );
+			// printf("adding dest addr to ps_h\n");
+			ps_h.dst_addr = dst_addr.sin_addr.s_addr;
+			// printf("added dest addr to ps_h\n");
 
-			memcpy(&ps_h->tcp_h, tcp_h, sizeof(struct tcphdr));
-			tcp_h->check = calcCheckSum( (unsigned short *)ps_h, sizeof(struct pseudo_header));
+			ps_h.reserved = 0;
+			ps_h.protocol = IPPROTO_TCP;
+			// printf("adding tcplen to ps_h\n");
+			ps_h.tcp_len = htons( sizeof(struct tcphdr) );
+
+			// printf("calculating checksum\n");
+			memcpy(&ps_h.tcp_h, tcp_h, sizeof(struct tcphdr));
+			tcp_h->check = calcCheckSum( (unsigned short *)&ps_h, sizeof(struct pseudo_header));
 
 			size_t sendlen = sizeof(struct iphdr) + sizeof(struct tcphdr);
 			ret = sendto( scannerSocket, datagram, sendlen, 0, (struct sockaddr *)&dst_addr, sizeof(dst_addr));
@@ -211,8 +230,14 @@ void *scanResponse(void *args){
 			dst_addr.sin_addr.s_addr = ip_h->daddr;
 
 			//Syn and Ack are set means port is open
-			if( (src_addr.sin_addr.s_addr == target_addr.sin_addr.s_addr) && (tcp_h->syn == 1) && (tcp_h->ack == 1)) {
-				printf("scanResponse: Port %d open\n", ntohs(tcp_h->source));
+			if( (src_addr.sin_addr.s_addr == target_addr.sin_addr.s_addr) ){
+				if ( (tcp_h->syn == 1) && (tcp_h->ack == 1) ) {
+					printf("scanResponse: Port %d/tcp open|filtered\n", ntohs(tcp_h->source));
+				}else if((tcp_h->rst == 1) && (tcp_h->ack == 1) ){
+					printf("scanResponse: Port %d/tcp closed|filtered\n", ntohs(tcp_h->source));
+				}
+			}else{
+				printf("scanResponse: target ip did not match\n");
 			}
 		}else{
 			printf("scanResponse: not a tcp protocol packet\n");

@@ -28,7 +28,7 @@ Run the following to start the scanner.
 
 .. code:: shell
 
-  ./port_scanner <-S/-F> <target ip> [port]
+  sudo ./port_scanner <-S/-F> <target ip> [port]
 
 Please type in the ip of target machine in target_ip field.
 -S is for syn scan, -F is for fin scan.
@@ -47,6 +47,12 @@ Assumptions
 
 - The scanner should be stopped using SIG_INT, otherwise it keeps on flooding the target ip
 - The scanner by default scans all the port numbers of the given ip
+- fin scanner report closed ports, others are assumed to be open
+- syn scanner report open ports, others are assumed to be closed
 
+Commands Used
+=============
+-sudo nmap -sX 10.0.0.6
+-sudo nc -lvnt 5555
 
 Developed by Sushant Kumar Singh
