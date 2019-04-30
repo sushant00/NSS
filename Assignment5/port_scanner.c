@@ -39,6 +39,7 @@ struct pseudo_header{
 	struct tcphdr tcp_h;
 };
 
+int syn_scan;
 struct sockaddr_in target_addr;
 
 // SERVER
@@ -46,9 +47,16 @@ int main(int argc, char **args){
 	//dont buffer output
 	setbuf(stdout, NULL);
 
-	if(argc<2){
-		printf("please supply the ip to scan\n");
+	if(argc<3){
+		printf("please supply the type of scan and ip to scan\n");
 		return -1;
+	}
+	if(strcmp(args[1], "-S")==0){
+		printf("doing syn scan\n");
+		syn_scan = 1;
+	}else{
+		printf("doing fin scan\n");
+		syn_scan = 0;
 	}
 
 	printf("starting server...\n");
@@ -77,7 +85,7 @@ int main(int argc, char **args){
 	//IPv4 address
 	dst_addr.sin_family = AF_INET;
 	dst_addr.sin_port = 0;		//we would set this later
-	inet_pton(AF_INET, (const char *)args[1], &dst_addr.sin_addr);
+	inet_pton(AF_INET, (const char *)args[2], &dst_addr.sin_addr);
 
 	target_addr = dst_addr;
 	
@@ -131,9 +139,9 @@ int main(int argc, char **args){
 	while(1){
 		int port_min = PORT_MIN;
 		int port_max = PORT_MAX;
-		if(args[2]!=NULL){
-			port_min = atoi(args[2]);
-			port_max = atoi(args[2]);
+		if(args[3]!=NULL){
+			port_min = atoi(args[3]);
+			port_max = atoi(args[3]);
 		}
 		for(int port_num = port_min; port_num <= port_max; port_num++){
 			//set the port number

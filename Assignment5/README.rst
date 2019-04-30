@@ -28,16 +28,18 @@ Run the following to start the scanner.
 
 .. code:: shell
 
-  ./port_scanner <target ip>
+  ./port_scanner <-S/-F> <target ip> [port]
 
 Please type in the ip of target machine in target_ip field.
+-S is for syn scan, -F is for fin scan.
+If port is set then only that port is checked
 
 
 Design
 ======
 - This Scanner supports the SYN Scan and FIN Scan, which work similar to NMAP
 - SYN Scan: packets with SYN bit are send to all ports of target. In response if the SYN and the ACK bits are set then, it is assumed that the port is opened.
-- FIN Scan: packets with FIN bit are send to all ports of target. In response if the RST and the FIN bits are set then, it is assumed that the port is closed.
+- FIN Scan: packets with FIN bit are send to all ports of target. In response if the RST and the ACK bits are set then, it is assumed that the port is closed.
 
 
 Assumptions
